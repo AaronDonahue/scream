@@ -509,9 +509,8 @@ CONTAINS
           do i=1,ncol
              phys_state(lchnk)%pdel (i,k) = phys_state(lchnk)%pint(i,k+1) - phys_state(lchnk)%pint(i,k)
              phys_state(lchnk)%rpdel(i,k) = 1._r8/phys_state(lchnk)%pdel(i,k)
-!             phys_state(lchnk)%exner (i,k) = (phys_state(lchnk)%pint(i,pver+1) &
-!                                             / phys_state(lchnk)%pmid(i,k))**cappa
-             phys_state(lchnk)%exner (i,k) = ( ps0/phys_state(lchnk)%pmid(i,k) )**cappa
+             phys_state(lchnk)%exner (i,k) = (phys_state(lchnk)%pint(i,pver+1) &
+                                             / phys_state(lchnk)%pmid(i,k))**cappa
           end do
        end do
 

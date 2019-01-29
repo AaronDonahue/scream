@@ -1,7 +1,7 @@
 module micro_p3_utils
 
     use physconst, only: pi, cpair, gravit, rair, rh2o, mwh2o, mwdry, rhoh2o, cpliq, &
-                         latvap, latice
+                         latvap, latice, tmelt
     use shr_kind_mod,   only: r8=>shr_kind_r8, i8=>shr_kind_i8
 
     implicit none
@@ -27,7 +27,11 @@ module micro_p3_utils
        clbfact_dep
     real(r8),dimension(16), public :: dnu
 
-    real(r8),public,parameter :: zerodegc = 273.15  ! Temperature at zero degree celcius ~K
+    real(r8),public :: zerodegc  ! Temperature at zero degree celcius ~K
+    real(r8),public :: rainfrze  ! Contact and immersion freexing temp, -4C  ~K
+    real(r8),public :: homogfrze ! Homogeneous freezing temperature, -40C  ~K
+    real(r8),public :: icenuct   ! Ice nucleation temperature, -5C ~K
+
     real(r8),public,parameter :: pi_e3sm = pi
     ! ice microphysics lookup table array dimensions
     integer, public,parameter :: isize        = 50
@@ -112,6 +116,12 @@ end interface var_coef
     kc     = 9.44e+9
     kr     = 5.78e+3
 
+    ! Temperature parameters
+    zerodegc  = tmelt 
+    homogfrze = tmelt-40.
+    icenuct   = tmelt-15.
+    rainfrze  = tmelt-4.
+
     ! physical constants
     cp     = cpair ! specific heat of dry air (J/K/kg) !1005.
     inv_cp = 1./cp ! inverse of cp
@@ -119,8 +129,8 @@ end interface var_coef
     rd     = rair ! Dry air gas constant     ~ J/K/kg     !287.15
     rv     = rh2o ! Water vapor gas constant ~ J/K/kg     !461.51
     ep_2   = mwh2o/mwdry  ! ratio of molecular mass of water to the molecular mass of dry air !0.622
-    rhosur = 100000./(rd*zerodegc)
-    rhosui = 60000./(rd*253.15)
+    rhosur = 100000./(rd*zerodegc)  ! density of air at surface
+    rhosui = 60000./(rd*253.15)     !
     ar     = 841.99667 
     br     = 0.8
     f1r    = 0.78
@@ -263,10 +273,11 @@ end interface var_coef
 
        integer  :: i,k
 
-       cldm(:,:)  = 0.
-       icldm(:,:) = 0.
-       lcldm(:,:) = 0.
-       rcldm(:,:) = 0.
+       cldm(:,:)  = 1.
+       icldm(:,:) = 1.
+       lcldm(:,:) = 1.
+       rcldm(:,:) = 1.
+
        do k = kbot,ktop,kdir
           do i=its,ite
              cldm(i,k)  = max(ast(i,k), mincld)
@@ -275,7 +286,7 @@ end interface var_coef
           end do
        end do
 
-       DO k = ktop,kbot,-kdir
+       DO k = kbot,ktop,kdir !AaronDonahue, can we look at this again to figure out what the correct approach is.
           DO i=its,ite
        !! 
        !! precipitation fraction 
@@ -300,7 +311,6 @@ end interface var_coef
           END IF
           END DO ! i
        END DO    ! k
-
 
        return
     end subroutine get_precip_fraction

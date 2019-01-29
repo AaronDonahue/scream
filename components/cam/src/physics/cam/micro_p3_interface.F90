@@ -823,6 +823,7 @@ end subroutine micro_p3_readnl
     real(r8) :: cmeiout(pcols,pver)
     real(r8) :: rflx(pcols,pver+1)     !grid-box average rain flux (kg m^-2s^-1) pverp
     real(r8) :: sflx(pcols,pver+1)     !grid-box average ice/snow flux (kg m^-2s^-1) pverp
+    real(r8) :: exner(pcols,pver)     !exner formula for converting between potential and normal temp
 
     ! PBUF Variables
     real(r8), pointer :: ast(:,:)      ! Relative humidity cloud fraction
@@ -1054,8 +1055,9 @@ end subroutine micro_p3_readnl
     !              Return true on first step of initial run only.
     do icol = 1,ncol
        do k = 1,pver
+          exner(icol,k) = 1._r8/( (state%pmid(icol,k)*1.e-5)**(rd*inv_cp) )
           if ( is_first_step() ) then
-             th_old(icol,k)=state%t(icol,k)*state%exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp)
+             th_old(icol,k)=state%t(icol,k)*exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp)
              qv_old(icol,k)=state%q(icol,k,1)
 !          else
 !             th_old(icol,k) = th(icol,k) !use th from end of last p3 step
@@ -1073,8 +1075,10 @@ end subroutine micro_p3_readnl
     !==============
     do icol = 1,ncol
        do k = 1,pver
+! Note: dzq is calculated in the opposite direction that pdel is calculated, thus when considering any dp/dz
+! calculation we must also change the sign.
           dzq(icol,k) = state%zi(icol,k) - state%zi(icol,k+1)
-          th(icol,k)  = state%t(icol,k)*state%exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) 
+          th(icol,k)  = state%t(icol,k)*exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) 
        end do
     end do
 
@@ -1171,7 +1175,7 @@ end subroutine micro_p3_readnl
          log_predictNc,               & ! IN     .true.=prognostic Nc, .false.=specified Nc
          ! AaronDonahue new stuff
          state%pdel(its:ite,kts:kte), & ! IN pressure level thickness for computing total mass
-         state%exner(its:ite,kts:kte), & ! IN exner values
+         exner(its:ite,kts:kte),      & ! IN exner values
          ast(its:ite,kts:kte),        & ! IN relative humidity cloud fraction
          cmeiout(its:ite,kts:kte),    & ! OUT Deposition/sublimation rate of cloud ice 
          prain(its:ite,kts:kte),      & ! OUT Total precipitation (rain + snow)
@@ -1210,7 +1214,7 @@ end subroutine micro_p3_readnl
     ! invalid" error messages at runtime
     do icol = 1,ncol
        do k = 1,pver
-          temp(icol,k) = th(icol,k)/state%exner(icol,k) !*(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) !convert theta to 
+          temp(icol,k) = th(icol,k)/exner(icol,k) !*(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) !convert theta to 
           ptend%s(icol,k)           = cpair*(temp(icol,k) - state%t(icol,k))/dtime ! changed cpair to 1005
           ptend%q(icol,k,1)         = (max(0._r8,qv(icol,k)     ) - state%q(icol,k,1) )/dtime
           ptend%q(icol,k,ixcldliq)  = (max(0._r8,cldliq(icol,k) ) - state%q(icol,k,ixcldliq) )/dtime
