@@ -314,7 +314,7 @@ contains
   SUBROUTINE p3_main(qc,nc,qr,nr,th_old,th,qv_old,qv,dt,qitot,qirim,nitot,birim,ssat,   &
        pres,dzq,it,prt_liq,prt_sol,its,ite,kts,kte,diag_ze,diag_effc,     &
        diag_effi,diag_vmi,diag_di,diag_rhoi,log_predictNc, &
-       pdel,exner,ast,cmeiout,prain,nevapr,prer_evap,rflx,sflx)
+       pdel,exner,cmeiout,prain,nevapr,prer_evap,rflx,sflx,icldm,lcldm,cldm,rcldm)
 
     !----------------------------------------------------------------------------------------!
     !                                                                                        !
@@ -379,8 +379,8 @@ contains
     real(r8), intent(out),   dimension(its:ite,kts:kte+1)    :: rflx       ! grid-box average rain flux (kg m^-2 s^-1) pverp
     real(r8), intent(out),   dimension(its:ite,kts:kte+1)    :: sflx       ! grid-box average ice/snow flux (kg m^-2 s^-1) pverp
     ! INPUT needed for PBUF variables used by other parameterizations
-    real(r8), intent(in),    dimension(its:ite,kts:kte)      :: ast        ! relative humidity cloud fraction
-
+    real(r8), intent(in),    dimension(its:ite,kts:kte)      :: icldm, lcldm, cldm ! Ice, Liq. and Full cloud fraction
+    real(r8), intent(out),   dimension(its:ite,kts:kte)      :: rcldm ! Rain cloud fraction
     !----- Local variables and parameters:  -------------------------------------------------!
 
     real(r8), dimension(its:ite,kts:kte) :: mu_r  ! shape parameter of rain
@@ -467,7 +467,6 @@ contains
 
     real(r8), dimension(its:ite,kts:kte) :: diam_ice
     ! AaronDonahue Added for extra output
-    real(r8), dimension(its:ite,kts:kte) :: icldm, lcldm, rcldm, cldm
     real(r8)                             :: mincld
     CHARACTER(len=16) :: precip_frac_method = 'max_overlap'
     ! AaronDonahue -end
@@ -581,7 +580,7 @@ contains
     diag_rhoi = 0.
     rhorime_c = 400.
 
-    call get_precip_fraction(its,ite,kts,kte,kbot,ktop,kdir,ast,qc,qr,qitot,precip_frac_method, &
+    call get_precip_fraction(its,ite,kts,kte,kbot,ktop,kdir,qc,qr,qitot,precip_frac_method, &
                 cldm,icldm,lcldm,rcldm)
     cmeiout = 0.
     prain   = 0.
@@ -1693,6 +1692,11 @@ contains
                inv_cp)*dt
           th_cellavg(i,k) = th_cellavg(i,k) + exner(i,k)*Ftot
           !==
+          ! AaronDonahue - Add extra variables needed from microphysics by E3SM:
+          cmeiout(i,k) = ( qidep - qisub + qinuc ) 
+          prain(i,k)   = ( qcacc + qcaut + qcshd + qccol + qrcon )
+          nevapr(i,k)  = qisub + qrevp
+          prer_evap(i,k) = qrevp 
 
           ! clipping for small hydrometeor values
           if (qc_cellavg(i,k).lt.qsmall) then
@@ -2359,15 +2363,6 @@ contains
 
     ! end of main microphysics routine
 
-    ! AaronDonahue - Add extra variables needed from microphysics by E3SM:
-    do i = its,ite
-       do k = kbot,ktop,kdir
-          cmeiout(i,k) = ( qidep - qisub + qinuc ) 
-          prain(i,k)   = ( qcacc + qcaut + qcshd + qccol + qrcon )
-          nevapr(i,k)  = qisub + qrevp
-          prer_evap(i,k) = qrevp 
-       end do
-    end do
 
     ! AaronDonahue - Update prognostic variables to match new cell-averaged
     ! quantities

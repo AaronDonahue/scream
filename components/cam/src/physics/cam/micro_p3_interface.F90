@@ -823,7 +823,11 @@ end subroutine micro_p3_readnl
     real(r8) :: cmeiout(pcols,pver)
     real(r8) :: rflx(pcols,pver+1)     !grid-box average rain flux (kg m^-2s^-1) pverp
     real(r8) :: sflx(pcols,pver+1)     !grid-box average ice/snow flux (kg m^-2s^-1) pverp
-    real(r8) :: exner(pcols,pver)     !exner formula for converting between potential and normal temp
+    real(r8) :: exner(pcols,pver)      !exner formula for converting between potential and normal temp
+    real(r8) :: icldm(pcols,pver)      !ice cloud fraction
+    real(r8) :: lcldm(pcols,pver)      !liquid cloud fraction
+    real(r8) :: cldm(pcols,pver)       !tot cloud fraction
+    real(r8) :: rcldm(pcols,pver)      !rain cloud fraction
 
     ! PBUF Variables
     real(r8), pointer :: ast(:,:)      ! Relative humidity cloud fraction
@@ -901,6 +905,8 @@ end subroutine micro_p3_readnl
     real(r8) :: nc(pcols,pver)
     real(r8) :: drout2(pcols,pver)
     real(r8) :: reff_rain(pcols,pver)
+    real(r8) :: aqrain(pcols,pver)
+    real(r8) :: anrain(pcols,pver)
 
  
     integer :: it                      !timestep counter                       -
@@ -1019,6 +1025,17 @@ end subroutine micro_p3_readnl
     !==============
     ! Some pre-microphysics INITIALIZATION
     !==============
+    cldm(:,:)  = 1._r8
+    icldm(:,:) = 1._r8
+    lcldm(:,:) = 1._r8
+
+    do icol = 1,ncol
+       do k = 1,pver
+          cldm(icol,k)  = max(ast(icol,k), mincld)
+          icldm(icol,k) = max(ast(icol,k), mincld)
+          lcldm(icol,k) = max(ast(icol,k), mincld)
+       end do
+    end do
     cldo(:ncol,top_lev:pver)=ast(:ncol,top_lev:pver)
     ! INITIALIZE PTEND
     !==============
@@ -1176,13 +1193,16 @@ end subroutine micro_p3_readnl
          ! AaronDonahue new stuff
          state%pdel(its:ite,kts:kte), & ! IN pressure level thickness for computing total mass
          exner(its:ite,kts:kte),      & ! IN exner values
-         ast(its:ite,kts:kte),        & ! IN relative humidity cloud fraction
          cmeiout(its:ite,kts:kte),    & ! OUT Deposition/sublimation rate of cloud ice 
          prain(its:ite,kts:kte),      & ! OUT Total precipitation (rain + snow)
          nevapr(its:ite,kts:kte),     & ! OUT evaporation of total precipitation (rain + snow)
          prer_evap(its:ite,kts:kte),  & ! OUT rain evaporation
          rflx(its:ite,kts:kte+1),     & ! OUT grid-box average rain flux (kg m^-2s^-1) pverp 
-         sflx(its:ite,kts:kte+1)      & ! OUT grid-box average ice/snow flux (kgm^-2 s^-1) pverp 
+         sflx(its:ite,kts:kte+1),     & ! OUT grid-box average ice/snow flux (kgm^-2 s^-1) pverp 
+         icldm(its:ite,kts:kte),      & ! IN ice cloud fraction
+         lcldm(its:ite,kts:kte),      & ! IN liquid cloud fraction
+         cldm(its:ite,kts:kte),       & ! IN relative humidity cloud fraction
+         rcldm(its:ite,kts:kte)       & ! IN rain cloud fraction
          )
 
     ! UPDATE TH AND QV OLD FOR NEXT P3 STEP
@@ -1406,7 +1426,8 @@ end subroutine micro_p3_readnl
    !!
    !! Limiters for low cloud fraction
    !!
-   
+   anrain(:,:) = 0._r8
+   aqrain(:,:) = 0._r8 
    do k = top_lev, pver
       do icol = 1, ngrdcol
          if ( ast(icol,k) < 1.e-4_r8 ) then
@@ -1414,6 +1435,8 @@ end subroutine micro_p3_readnl
             lambdac(icol,k) = (mucon + 1._r8)/dcon
             dei(icol,k) = deicon
          end if
+         anrain(icol,k) = numrain(icol,k)*rcldm(icol,k)
+         aqrain(icol,k) = rain(icol,k)*rcldm(icol,k)
       end do
    end do
 
@@ -1448,9 +1471,9 @@ end subroutine micro_p3_readnl
 
     !WRITE OUTPUT
     !=============
-   call outfld('AQRAIN',      rain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('AQRAIN',      aqrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
 !   call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-   call outfld('ANRAIN',      numrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('ANRAIN',      anrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
 !   call outfld('ANSNOW',      nsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
 !   call outfld('AREL',        efcout,      pcols, lchnk)
 !   call outfld('AREI',        efiout,      pcols, lchnk)

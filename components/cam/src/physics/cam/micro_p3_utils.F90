@@ -263,28 +263,18 @@ end interface var_coef
 !__________________________________________________________________________________________!
 !                                                                                          !
 !__________________________________________________________________________________________!
-    subroutine get_precip_fraction(its,ite,kts,kte,kbot,ktop,kdir,ast,qc,qr,qitot,method, &
+    subroutine get_precip_fraction(its,ite,kts,kte,kbot,ktop,kdir,qc,qr,qitot,method, &
                 cldm,icldm,lcldm,rcldm)
       
        integer,intent(in)                              :: its,ite,kts,kte,kbot,ktop,kdir
-       real(r8),dimension(its:ite,kts:kte),intent(in)  :: ast, qc, qr, qitot
+       real(r8),dimension(its:ite,kts:kte),intent(in)  :: qc, qr, qitot
        character(len=16),intent(in)                    :: method
-       real(r8),dimension(its:ite,kts:kte),intent(out) :: cldm, icldm, lcldm, rcldm
+       real(r8),dimension(its:ite,kts:kte),intent(in)  :: cldm, icldm, lcldm
+       real(r8),dimension(its:ite,kts:kte),intent(out) :: rcldm
 
        integer  :: i,k
 
-       cldm(:,:)  = 1.
-       icldm(:,:) = 1.
-       lcldm(:,:) = 1.
        rcldm(:,:) = 1.
-
-       do k = kbot,ktop,kdir
-          do i=its,ite
-             cldm(i,k)  = max(ast(i,k), mincld)
-             icldm(i,k) = max(ast(i,k), mincld)
-             lcldm(i,k) = max(ast(i,k), mincld)
-          end do
-       end do
 
        DO k = kbot,ktop,kdir !AaronDonahue, can we look at this again to figure out what the correct approach is.
           DO i=its,ite
