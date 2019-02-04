@@ -36,6 +36,7 @@ module micro_p3_interface
   use spmd_utils,     only: masterproc
   use cam_logfile,    only: iulog
   use time_manager,   only: is_first_step
+  use micro_mg_cam,   only: microp_uniform !AaronDonahue TODO, fix readnl below and not have to use this "use" statement
        
   implicit none
 
@@ -907,7 +908,20 @@ end subroutine micro_p3_readnl
     real(r8) :: reff_rain(pcols,pver)
     real(r8) :: aqrain(pcols,pver)
     real(r8) :: anrain(pcols,pver)
+    real(r8) :: nfice(pcols,pver)
 
+    real(r8) :: efcout(pcols,pver)      
+    real(r8) :: efiout(pcols,pver)      
+    real(r8) :: ncout(pcols,pver)      
+    real(r8) :: niout(pcols,pver)      
+    real(r8) :: freqr(pcols,pver)      
+    real(r8) :: freql(pcols,pver)      
+    real(r8) :: freqi(pcols,pver)      
+    real(r8) :: cdnumc(pcols)      
+    real(r8) :: icwmrst_out(pcols,pver) 
+    real(r8) :: icimrst_out(pcols,pver) 
+    real(r8) :: icinc(pcols,pver) 
+    real(r8) :: icwnc(pcols,pver) 
  
     integer :: it                      !timestep counter                       -
     integer :: its, ite                !horizontal bounds (column start,finish)
@@ -1025,18 +1039,6 @@ end subroutine micro_p3_readnl
     !==============
     ! Some pre-microphysics INITIALIZATION
     !==============
-    cldm(:,:)  = 1._r8
-    icldm(:,:) = 1._r8
-    lcldm(:,:) = 1._r8
-
-    do icol = 1,ncol
-       do k = 1,pver
-          cldm(icol,k)  = max(ast(icol,k), mincld)
-          icldm(icol,k) = max(ast(icol,k), mincld)
-          lcldm(icol,k) = max(ast(icol,k), mincld)
-       end do
-    end do
-    cldo(:ncol,top_lev:pver)=ast(:ncol,top_lev:pver)
     ! INITIALIZE PTEND
     !==============
     !ptend is an output variable. Since not substepping in micro, don't need 
@@ -1155,6 +1157,36 @@ end subroutine micro_p3_readnl
     kts     = 1
     kte     = pver
     pres    = state%pmid(:,:)
+
+    ! Set cloud fractions:
+    cldm(:,:)  = 1._r8
+    icldm(:,:) = 1._r8
+    lcldm(:,:) = 1._r8
+
+    if (microp_uniform) then
+       where (cldliq >= qsmall)
+          lcldm = 1._r8
+       elsewhere
+          lcldm = mincld
+       end where
+
+       where (ice >= qsmall)
+          icldm = 1._r8
+       elsewhere
+          icldm = mincld
+       end where
+   
+       cldm = max(icldm,lcldm)
+    else
+       do icol = 1,ncol
+          do k = 1,pver
+             cldm(icol,k)  = max(ast(icol,k), mincld)
+             icldm(icol,k) = max(ast(icol,k), mincld)
+             lcldm(icol,k) = max(ast(icol,k), mincld)
+          end do
+       end do
+    end if
+    cldo(:ncol,top_lev:pver)=ast(:ncol,top_lev:pver)
     ! CALL P3
     !==============
 #if 1
@@ -1273,8 +1305,8 @@ end subroutine micro_p3_readnl
    ! Note that 'iclwp, iciwp' are used for radiation computation. !
    ! ------------------------------------------------------------ !
       
-!   icinc = 0._r8
-!   icwnc = 0._r8
+   icinc = 0._r8
+   icwnc = 0._r8
    iciwpst = 0._r8
    iclwpst = 0._r8
       
@@ -1284,10 +1316,10 @@ end subroutine micro_p3_readnl
          ! in-cloud mixing ratio maximum limit of 0.005 kg/kg
          icimrst(icol,k)   = min( state%q(icol,k,ixcldice) / max(mincld,icecldf(icol,k)),0.005_r8 )
          icwmrst(icol,k)   = min( state%q(icol,k,ixcldliq) / max(mincld,liqcldf(icol,k)),0.005_r8 )
-!         icinc(i,k)     = state%q(i,k,ixnumice) / max(mincld,icecldf(i,k)) * &
-!              state%pmid(i,k) / (287.15_r8*state%t(i,k))
-!         icwnc(i,k)     = state%q(i,k,ixnumliq) / max(mincld,liqcldf(i,k)) * &
-!              state%pmid(i,k) / (287.15_r8*state%t(i,k))
+         icinc(icol,k)     = state%q(icol,k,ixnumice) / max(mincld,icldm(icol,k)) * &
+              state%pmid(icol,k) / (287.15_r8*state%t(icol,k))
+         icwnc(icol,k)     = state%q(icol,k,ixnumliq) / max(mincld,lcldm(icol,k)) * &
+              state%pmid(icol,k) / (287.15_r8*state%t(icol,k))
          ! Calculate micro_p3_acme cloud water paths in each layer
          ! Note: uses stratiform cloud fraction!
          iciwpst(icol,k)   = min(state%q(icol,k,ixcldice)/max(mincld,ast(icol,k)),0.005_r8) * state%pdel(icol,k) / gravit
@@ -1385,6 +1417,9 @@ end subroutine micro_p3_readnl
    
    drout2 = 0._r8
    reff_rain = 0._r8
+   aqrain = 0._r8
+   anrain = 0._r8
+   freqr = 0._r8
 
       ! Prognostic precipitation
 
@@ -1394,6 +1429,9 @@ end subroutine micro_p3_readnl
               numrain(:ngrdcol,top_lev:) * rho(:ngrdcol,top_lev:), &
               rho(:ngrdcol,top_lev:), rhow)
 
+         aqrain = rain * rcldm
+         anrain = numrain * rcldm
+         freqr = rcldm
          reff_rain(:ngrdcol,top_lev:) = drout2(:ngrdcol,top_lev:) * &
               1.5_r8 * 1.e6_r8
       end where
@@ -1426,8 +1464,6 @@ end subroutine micro_p3_readnl
    !!
    !! Limiters for low cloud fraction
    !!
-   anrain(:,:) = 0._r8
-   aqrain(:,:) = 0._r8 
    do k = top_lev, pver
       do icol = 1, ngrdcol
          if ( ast(icol,k) < 1.e-4_r8 ) then
@@ -1435,8 +1471,6 @@ end subroutine micro_p3_readnl
             lambdac(icol,k) = (mucon + 1._r8)/dcon
             dei(icol,k) = deicon
          end if
-         anrain(icol,k) = numrain(icol,k)*rcldm(icol,k)
-         aqrain(icol,k) = rain(icol,k)*rcldm(icol,k)
       end do
    end do
 
@@ -1465,6 +1499,55 @@ end subroutine micro_p3_readnl
       end do
    end do
 
+   !! prepare following output 
+   !! 
+   !! AREL 
+   !! AREI 
+   !! AWNC 
+   !! AWNI 
+   !! FREQL 
+   !! FREQI
+   !!  
+
+   ! Averaging for new output fields
+   efcout      = 0._r8
+   efiout      = 0._r8
+   ncout       = 0._r8
+   niout       = 0._r8
+   freql       = 0._r8
+   freqi       = 0._r8
+   cdnumc      = 0._r8
+   icwmrst_out = 0._r8
+   icimrst_out = 0._r8
+   nfice       = 0._r8
+
+   ! FICE
+   where (ice .gt. qsmall .and. (rain+ice+cldliq) .gt. qsmall)
+      nfice=min(ice/(rain+ice+cldliq),1._r8)
+   elsewhere
+      nfice=0._r8
+   end where
+   
+   ! Column droplet concentration
+   cdnumc(:ngrdcol) = sum(nc(:ngrdcol,top_lev:pver) * &
+        state%pdel(:ngrdcol,top_lev:pver)/gravit, dim=2)
+   do k = top_lev, pver
+      do icol = 1, ngrdcol
+         if ( lcldm(icol,k) > 0.01_r8 .and. icwmrst(icol,k) > 5.e-5_r8 ) then
+            efcout(icol,k) = rel(icol,k) * lcldm(icol,k)
+            ncout(icol,k)  = icwnc(icol,k) * lcldm(icol,k)
+            freql(icol,k)  = lcldm(icol,k)
+            icwmrst_out(icol,k) = icwmrst(icol,k)
+         end if
+         if ( icldm(icol,k) > 0.01_r8 .and. icimrst(icol,k) > 1.e-6_r8 ) then
+            efiout(icol,k) = rei(icol,k) * icldm(icol,k)
+            niout(icol,k)  = icinc(icol,k) * icldm(icol,k)
+            freqi(icol,k)  = icldm(icol,k)
+            icimrst_out(icol,k) = icimrst(icol,k)
+         end if
+      end do
+   end do
+
    ! note: 1e-6 kgho2/kgair/s * 1000. pa / (9.81 m/s2) / 1000 kgh2o/m3 = 1e-7 m/s
    ! this is 1ppmv of h2o in 10hpa
    ! alternatively: 0.1 mm/day * 1.e-4 m/mm * 1/86400 day/s = 1.e-9
@@ -1472,22 +1555,117 @@ end subroutine micro_p3_readnl
     !WRITE OUTPUT
     !=============
    call outfld('AQRAIN',      aqrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
    call outfld('ANRAIN',      anrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+
+!   call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
 !   call outfld('ANSNOW',      nsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('AREL',        efcout,      pcols, lchnk)
-!   call outfld('AREI',        efiout,      pcols, lchnk)
-!   call outfld('AWNC' ,       ncout,       pcols, lchnk)
-!   call outfld('AWNI' ,       niout,       pcols, lchnk)
-!   call outfld('FICE',        nfice,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('FREQL',       freql,       pcols, lchnk)
-!   call outfld('FREQI',       freqi,       pcols, lchnk)
-!   call outfld('FREQR',       freqr,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('FREQR',       freqr,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
 !   call outfld('FREQS',       freqs,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('AREL',        efcout,      pcols, lchnk)
+   call outfld('AREI',        efiout,      pcols, lchnk)
+   call outfld('AWNC' ,       ncout,       pcols, lchnk)
+   call outfld('AWNI' ,       niout,       pcols, lchnk)
+   call outfld('FREQL',       freql,       pcols, lchnk)
+   call outfld('FREQI',       freqi,       pcols, lchnk)
+   call outfld('CDNUMC',      cdnumc,      pcols, lchnk)  !TODO, add this too  AaronDonahue
+   call outfld('FICE',        nfice,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
     
     !call outfld('P3_QCAUT',   qcaut,  pcols, lchnk)
 
-    !TODO: add other outfld calls. Probably not worth doing until we get the code compiling...
+   !TODO: add other outfld calls. Probably not worth doing until we get the code compiling...
+   ! Note, the fields listed below are taken from MG outfld calls.  Some may not
+   ! pertain to P3.
+!   call outfld('QRAIN',       qrout_grid,       pcols, lchnk)
+!   call outfld('QSNOW',       qsout_grid,       pcols, lchnk)
+!   call outfld('NRAIN',       nrout_grid,       pcols, lchnk)
+!   call outfld('NSNOW',       nsout_grid,       pcols, lchnk)
+!   call outfld('CV_REFFLIQ',  cvreffliq_grid,   pcols, lchnk)
+!   call outfld('CV_REFFICE',  cvreffice_grid,   pcols, lchnk)
+!   call outfld('LS_FLXPRC',   mgflxprc_grid,    pcols, lchnk)
+!   call outfld('LS_FLXSNW',   mgflxsnw_grid,    pcols, lchnk)
+!   call outfld('CME',         qme_grid,         pcols, lchnk)
+!   call outfld('PRODPREC',    prain_grid,       pcols, lchnk)
+!   call outfld('EVAPPREC',    nevapr_grid,      pcols, lchnk)
+!   call outfld('QCRESO',      qcreso_grid,      pcols, lchnk)
+!   call outfld('LS_REFFRAIN', mgreffrain_grid,  pcols, lchnk)
+!   call outfld('LS_REFFSNOW', mgreffsnow_grid,  pcols, lchnk)
+!   call outfld('DSNOW',       des_grid,         pcols, lchnk)
+!   call outfld('ADRAIN',      drout2_grid,      pcols, lchnk)
+!   call outfld('ADSNOW',      dsout2_grid,      pcols, lchnk)
+!   call outfld('PE',          pe_grid,          pcols, lchnk)
+!   call outfld('PEFRAC',      pefrac_grid,      pcols, lchnk)
+!   call outfld('APRL',        tpr_grid,         pcols, lchnk)
+!   call outfld('VPRAO',       vprao_grid,       pcols, lchnk)
+!   call outfld('VPRCO',       vprco_grid,       pcols, lchnk)
+!   call outfld('RACAU',       racau_grid,       pcols, lchnk)
+!   call outfld('ACTREL',      ctrel_grid,       pcols, lchnk)
+!   call outfld('ACTREI',      ctrei_grid,       pcols, lchnk)
+!   call outfld('ACTNL',       ctnl_grid,        pcols, lchnk)
+!   call outfld('ACTNI',       ctni_grid,        pcols, lchnk)
+!   call outfld('FCTL',        fctl_grid,        pcols, lchnk)
+!   call outfld('FCTI',        fcti_grid,        pcols, lchnk)
+!   call outfld('ICINC',       icinc_grid,       pcols, lchnk)
+!   call outfld('ICWNC',       icwnc_grid,       pcols, lchnk)
+!   call outfld('EFFLIQ_IND',  rel_fn_grid,      pcols, lchnk)
+!   call outfld('REL',         rel_grid,         pcols, lchnk)
+!   call outfld('REI',         rei_grid,         pcols, lchnk)
+!   call outfld('ICIMRST',     icimrst_grid_out, pcols, lchnk)
+!   call outfld('ICWMRST',     icwmrst_grid_out, pcols, lchnk)
+!   call outfld('CMEIOUT',     cmeiout_grid,     pcols, lchnk)
+!   call outfld('PRAO',        prao_grid,        pcols, lchnk)
+!   call outfld('PRCO',        prco_grid,        pcols, lchnk)
+!   call outfld('MNUCCCO',     mnuccco_grid,     pcols, lchnk)
+!   call outfld('MNUCCTO',     mnuccto_grid,     pcols, lchnk)
+!   call outfld('MSACWIO',     msacwio_grid,     pcols, lchnk)
+!   call outfld('PSACWSO',     psacwso_grid,     pcols, lchnk)
+!   call outfld('BERGSO',      bergso_grid,      pcols, lchnk)
+!   call outfld('BERGO',       bergo_grid,       pcols, lchnk)
+!   call outfld('MELTO',       melto_grid,       pcols, lchnk)
+!   call outfld('HOMOO',       homoo_grid,       pcols, lchnk)
+!   call outfld('PRCIO',       prcio_grid,       pcols, lchnk)
+!   call outfld('PRAIO',       praio_grid,       pcols, lchnk)
+!   call outfld('QIRESO',      qireso_grid,      pcols, lchnk)
+!   call outfld('QCRAT',    qcrat,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('UMR',      umr,         psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('UMS',      ums,         psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MNUCCDO',     mnuccdo,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MNUCCDOhet',  mnuccdohet,  psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MNUCCRO',     mnuccro,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('PRACSO',      pracso ,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MELTSDT',     meltsdt,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('FRZRDT',      frzrdt ,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QRSEDTEN',    qrsedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QSSEDTEN',    qssedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPICLWPI',    iclwpi,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPICIWPI',    iciwpi,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('REFL',        refl,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('AREFL',       arefl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('AREFLZ',      areflz,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('FREFL',       frefl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('CSRFL',       csrfl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('ACSRFL',      acsrfl,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('FCSRFL',      fcsrfl,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('RERCLD',      rercld,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('NCAL',        ncal,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('NCAI',        ncai,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPDT',        tlat,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPDQ',        qvlat,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPDLIQ',      qcten,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('MPDICE',      qiten,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('EVAPSNOW',    evapsnow,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QCSEVAP',     qcsevap,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QISEVAP',     qisevap,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QVRES',       qvres,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('VTRMC',       vtrmc,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('VTRMI',       vtrmi,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QCSEDTEN',    qcsedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('QISEDTEN',    qisedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld( 'MPDW2V', ftem_grid, pcols, lchnk)
+!   call outfld( 'MPDW2I', ftem_grid, pcols, lchnk)
+!   call outfld( 'MPDW2P', ftem_grid, pcols, lchnk)
+!   call outfld( 'MPDI2V', ftem_grid, pcols, lchnk)
+!   call outfld( 'MPDI2W', ftem_grid, pcols, lchnk)
+!   call outfld( 'MPDI2P', ftem_grid, pcols, lchnk)
 
   end subroutine micro_p3_tend
 

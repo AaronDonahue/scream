@@ -77,7 +77,7 @@ MODULE MICRO_P3
 
   ! in-cloud values
   REAL(r8), PARAMETER :: cldm_min   = 1.e-20_r8 !! threshold min value for cloud fraction
-  real(r8), parameter :: incloud_limit = 5.1E-3
+  real(r8), parameter :: incloud_limit = 5.0E-3
   real(r8), parameter :: precip_limit  = 1.0E-2
 
 contains

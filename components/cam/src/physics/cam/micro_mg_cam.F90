@@ -117,7 +117,7 @@ integer :: micro_mg_sub_version = 0      ! Second part of version number.
 
 real(r8) :: micro_mg_dcs = -1._r8
 
-logical :: microp_uniform
+logical, public :: microp_uniform
 
 !!== KZ_DCS
 logical :: micro_mg_dcs_tdep  = .false.! if set to true, use temperature dependent dcs
