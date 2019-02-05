@@ -584,6 +584,10 @@ end subroutine micro_p3_readnl
     call addfld(apcnst(ixcldrim), (/ 'lev' /), 'A', 'kg/kg', trim(cnst_name(ixcldrim))//' after physics'  )
     call addfld(bpcnst(ixcldrim), (/ 'lev' /), 'A', 'kg/kg', trim(cnst_name(ixcldrim))//' before physics' )
 
+    ! microphysics cloud fraction fields
+    call addfld('CLOUDFRAC_LIQ_MICRO', (/ 'lev' /), 'A', 'unitless', 'Grid box liquid cloud fraction in microphysics' )
+    call addfld('CLOUDFRAC_ICE_MICRO', (/ 'lev' /), 'A', 'unitless', 'Grid box ice cloud fraction in microphysics' )
+    call addfld('CLOUDFRAC_RAIN_MICRO', (/ 'lev' /), 'A', 'unitless', 'Grid box rain cloud fraction in microphysics' )
 
     call addfld ('CME', (/ 'lev' /), 'A', 'kg/kg/s', 'Rate of cond-evap within the cloud'                      )
 !    call addfld ('PRODPREC', (/ 'lev' /), 'A', 'kg/kg/s', 'Rate of conversion of condensate to precip'              )
@@ -765,6 +769,10 @@ end subroutine micro_p3_readnl
          call add_default(cnst_name(mm), 1, ' ')
          ! call add_default(sflxnam(mm),   1, ' ')
       end do
+      ! Microphysics cloud fractions
+      call add_default ('CLOUDFRAC_LIQ_MICRO', 1, ' ')
+      call add_default ('CLOUDFRAC_ICE_MICRO', 1, ' ')
+      call add_default ('CLOUDFRAC_RAIN_MICRO', 1, ' ')
    end if
 
   end subroutine micro_p3_init
@@ -823,6 +831,10 @@ end subroutine micro_p3_readnl
     real(r8) :: cmeiout(pcols,pver)
     real(r8) :: rflx(pcols,pver+1)     !grid-box average rain flux (kg m^-2s^-1) pverp
     real(r8) :: sflx(pcols,pver+1)     !grid-box average ice/snow flux (kg m^-2s^-1) pverp
+    real(r8) :: exner(pcols,pver)      !exner formula for converting between potential and normal temp
+    real(r8) :: rcldm(pcols,pver)      !rain cloud fraction
+    real(r8) :: lcldm(pcols,pver)      !liquid cloud fraction
+    real(r8) :: icldm(pcols,pver)      !ice cloud fraction
 
     ! PBUF Variables
     real(r8), pointer :: ast(:,:)      ! Relative humidity cloud fraction
@@ -900,6 +912,23 @@ end subroutine micro_p3_readnl
     real(r8) :: nc(pcols,pver)
     real(r8) :: drout2(pcols,pver)
     real(r8) :: reff_rain(pcols,pver)
+
+    ! Variables used for microphysics output
+    real(r8) :: aqrain(pcols,pver)
+    real(r8) :: anrain(pcols,pver)
+    real(r8) :: nfice(pcols,pver)
+    real(r8) :: efcout(pcols,pver)      
+    real(r8) :: efiout(pcols,pver)      
+    real(r8) :: ncout(pcols,pver)      
+    real(r8) :: niout(pcols,pver)      
+    real(r8) :: freqr(pcols,pver)      
+    real(r8) :: freql(pcols,pver)      
+    real(r8) :: freqi(pcols,pver)      
+    real(r8) :: cdnumc(pcols)      
+    real(r8) :: icwmrst_out(pcols,pver) 
+    real(r8) :: icimrst_out(pcols,pver) 
+    real(r8) :: icinc(pcols,pver) 
+    real(r8) :: icwnc(pcols,pver) 
 
  
     integer :: it                      !timestep counter                       -
@@ -1054,8 +1083,9 @@ end subroutine micro_p3_readnl
     !              Return true on first step of initial run only.
     do icol = 1,ncol
        do k = 1,pver
+          exner(icol,k) = 1._r8/((state%pmid(icol,k)*1.e-5)**(rd*inv_cp))
           if ( is_first_step() ) then
-             th_old(icol,k)=state%t(icol,k)*state%exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp)
+             th_old(icol,k)=state%t(icol,k)*exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp)
              qv_old(icol,k)=state%q(icol,k,1)
 !          else
 !             th_old(icol,k) = th(icol,k) !use th from end of last p3 step
@@ -1073,8 +1103,10 @@ end subroutine micro_p3_readnl
     !==============
     do icol = 1,ncol
        do k = 1,pver
+! Note: dzq is calculated in the opposite direction that pdel is calculated,
+! thus when considering any dp/dz calculation we must also change the sign.
           dzq(icol,k) = state%zi(icol,k) - state%zi(icol,k+1)
-          th(icol,k)  = state%t(icol,k)*state%exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) 
+          th(icol,k)  = state%t(icol,k)*exner(icol,k) !/(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) 
        end do
     end do
 
@@ -1171,14 +1203,17 @@ end subroutine micro_p3_readnl
          log_predictNc,               & ! IN     .true.=prognostic Nc, .false.=specified Nc
          ! AaronDonahue new stuff
          state%pdel(its:ite,kts:kte), & ! IN pressure level thickness for computing total mass
-         state%exner(its:ite,kts:kte), & ! IN exner values
+         exner(its:ite,kts:kte), & ! IN exner values
          ast(its:ite,kts:kte),        & ! IN relative humidity cloud fraction
          cmeiout(its:ite,kts:kte),    & ! OUT Deposition/sublimation rate of cloud ice 
          prain(its:ite,kts:kte),      & ! OUT Total precipitation (rain + snow)
          nevapr(its:ite,kts:kte),     & ! OUT evaporation of total precipitation (rain + snow)
          prer_evap(its:ite,kts:kte),  & ! OUT rain evaporation
          rflx(its:ite,kts:kte+1),     & ! OUT grid-box average rain flux (kg m^-2s^-1) pverp 
-         sflx(its:ite,kts:kte+1)      & ! OUT grid-box average ice/snow flux (kgm^-2 s^-1) pverp 
+         sflx(its:ite,kts:kte+1),     & ! OUT grid-box average ice/snow flux (kgm^-2 s^-1) pverp
+         rcldm(its:ite,kts:kte),      & ! OUT rain cloud fraction
+         lcldm(its:ite,kts:kte),      & ! OUT liquid cloud fraction
+         icldm(its:ite,kts:kte)       & ! OUT ice cloud fraction
          )
 
     ! UPDATE TH AND QV OLD FOR NEXT P3 STEP
@@ -1210,7 +1245,7 @@ end subroutine micro_p3_readnl
     ! invalid" error messages at runtime
     do icol = 1,ncol
        do k = 1,pver
-          temp(icol,k) = th(icol,k)/state%exner(icol,k) !*(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) !convert theta to 
+          temp(icol,k) = th(icol,k)/exner(icol,k) !*(state%pmid(icol,k)*1.e-5)**(rd*inv_cp) !convert theta to 
           ptend%s(icol,k)           = cpair*(temp(icol,k) - state%t(icol,k))/dtime ! changed cpair to 1005
           ptend%q(icol,k,1)         = (max(0._r8,qv(icol,k)     ) - state%q(icol,k,1) )/dtime
           ptend%q(icol,k,ixcldliq)  = (max(0._r8,cldliq(icol,k) ) - state%q(icol,k,ixcldliq) )/dtime
@@ -1241,16 +1276,16 @@ end subroutine micro_p3_readnl
     snow_sed = 0._r8
     snow_str = snow_pcw + snow_sed
       
-   icecldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
-   liqcldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
+   !icecldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
+   !liqcldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver) ! already an output from p3_main
       
    ! ------------------------------------------------------------ !
    ! Compute in cloud ice and liquid mixing ratios                !
    ! Note that 'iclwp, iciwp' are used for radiation computation. !
    ! ------------------------------------------------------------ !
       
-!   icinc = 0._r8
-!   icwnc = 0._r8
+   icinc = 0._r8
+   icwnc = 0._r8
    iciwpst = 0._r8
    iclwpst = 0._r8
       
@@ -1258,12 +1293,12 @@ end subroutine micro_p3_readnl
       do icol = 1, ncol
          ! Limits for in-cloud mixing ratios consistent with P3 microphysics
          ! in-cloud mixing ratio maximum limit of 0.005 kg/kg
-         icimrst(icol,k)   = min( state%q(icol,k,ixcldice) / max(mincld,icecldf(icol,k)),0.005_r8 )
-         icwmrst(icol,k)   = min( state%q(icol,k,ixcldliq) / max(mincld,liqcldf(icol,k)),0.005_r8 )
-!         icinc(i,k)     = state%q(i,k,ixnumice) / max(mincld,icecldf(i,k)) * &
-!              state%pmid(i,k) / (287.15_r8*state%t(i,k))
-!         icwnc(i,k)     = state%q(i,k,ixnumliq) / max(mincld,liqcldf(i,k)) * &
-!              state%pmid(i,k) / (287.15_r8*state%t(i,k))
+         icimrst(icol,k)   = min( state%q(icol,k,ixcldice) / max(mincld,icldm(icol,k)),0.005_r8 )
+         icwmrst(icol,k)   = min( state%q(icol,k,ixcldliq) / max(mincld,lcldm(icol,k)),0.005_r8 )
+         icinc(icol,k)     = state%q(icol,k,ixnumice) / max(mincld,icldm(icol,k)) * &
+              state%pmid(icol,k) / (287.15_r8*state%t(icol,k))
+         icwnc(icol,k)     = state%q(icol,k,ixnumliq) / max(mincld,lcldm(icol,k)) * &
+              state%pmid(icol,k) / (287.15_r8*state%t(icol,k))
          ! Calculate micro_p3_acme cloud water paths in each layer
          ! Note: uses stratiform cloud fraction!
          iciwpst(icol,k)   = min(state%q(icol,k,ixcldice)/max(mincld,ast(icol,k)),0.005_r8) * state%pdel(icol,k) / gravit
@@ -1335,7 +1370,7 @@ end subroutine micro_p3_readnl
    !!
    
    ncic(:ngrdcol,top_lev:) = nc(:ngrdcol,top_lev:) / &
-        max(mincld,liqcldf(:ngrdcol,top_lev:))
+        max(mincld,lcldm(:ngrdcol,top_lev:))
 
    call size_dist_param_liq(&
            mg_liq_props, &
@@ -1359,8 +1394,11 @@ end subroutine micro_p3_readnl
    !! Rain/Snow effective diameter
    !!
    
-   drout2 = 0._r8
+   drout2    = 0._r8
    reff_rain = 0._r8
+   aqrain    = 0._r8
+   anrain    = 0._r8
+   freqr     = 0._r8
 
       ! Prognostic precipitation
 
@@ -1370,6 +1408,9 @@ end subroutine micro_p3_readnl
               numrain(:ngrdcol,top_lev:) * rho(:ngrdcol,top_lev:), &
               rho(:ngrdcol,top_lev:), rhow)
 
+         aqrain = rain * rcldm
+         anrain = numrain * rcldm
+         freqr = rcldm
          reff_rain(:ngrdcol,top_lev:) = drout2(:ngrdcol,top_lev:) * &
               1.5_r8 * 1.e6_r8
       end where
@@ -1382,7 +1423,7 @@ end subroutine micro_p3_readnl
    rei = 25._r8
 
    niic(:ngrdcol,top_lev:) = numice(:ngrdcol,top_lev:) / &
-        max(mincld,icecldf(:ngrdcol,top_lev:))
+        max(mincld,icldm(:ngrdcol,top_lev:))
 
    call size_dist_param_basic( &
            mg_ice_props, &
@@ -1438,29 +1479,74 @@ end subroutine micro_p3_readnl
       end do
    end do
 
+   ! Averaging for new output fields
+   efcout      = 0._r8
+   efiout      = 0._r8
+   ncout       = 0._r8
+   niout       = 0._r8
+   freql       = 0._r8
+   freqi       = 0._r8
+   cdnumc      = 0._r8
+   icwmrst_out = 0._r8
+   icimrst_out = 0._r8
+   nfice       = 0._r8
+
+   ! FICE
+   where (ice .gt. qsmall .and. (rain+ice+cldliq) .gt. qsmall)
+      nfice=min(ice/(rain+ice+cldliq),1._r8)
+   elsewhere
+      nfice=0._r8
+   end where
+
+   ! Column droplet concentration
+   cdnumc(:ngrdcol) = sum(nc(:ngrdcol,top_lev:pver) * &
+        state%pdel(:ngrdcol,top_lev:pver)/gravit, dim=2)
+   do k = top_lev, pver
+      do icol = 1, ngrdcol
+         if ( lcldm(icol,k) > 0.01_r8 .and. icwmrst(icol,k) > 5.e-5_r8 ) then
+            efcout(icol,k) = rel(icol,k) * lcldm(icol,k)
+            ncout(icol,k)  = icwnc(icol,k) * lcldm(icol,k)
+            freql(icol,k)  = lcldm(icol,k)
+            icwmrst_out(icol,k) = icwmrst(icol,k)
+         end if
+         if ( icldm(icol,k) > 0.01_r8 .and. icimrst(icol,k) > 1.e-6_r8 ) then
+            efiout(icol,k) = rei(icol,k) * icldm(icol,k)
+            niout(icol,k)  = icinc(icol,k) * icldm(icol,k)
+            freqi(icol,k)  = icldm(icol,k)
+            icimrst_out(icol,k) = icimrst(icol,k)
+         end if
+      end do
+   end do
+
    ! note: 1e-6 kgho2/kgair/s * 1000. pa / (9.81 m/s2) / 1000 kgh2o/m3 = 1e-7 m/s
    ! this is 1ppmv of h2o in 10hpa
    ! alternatively: 0.1 mm/day * 1.e-4 m/mm * 1/86400 day/s = 1.e-9
 
     !WRITE OUTPUT
     !=============
-   call outfld('AQRAIN',      rain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-   call outfld('ANRAIN',      numrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('ANSNOW',      nsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('AREL',        efcout,      pcols, lchnk)
-!   call outfld('AREI',        efiout,      pcols, lchnk)
-!   call outfld('AWNC' ,       ncout,       pcols, lchnk)
-!   call outfld('AWNI' ,       niout,       pcols, lchnk)
-!   call outfld('FICE',        nfice,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
-!   call outfld('FREQL',       freql,       pcols, lchnk)
-!   call outfld('FREQI',       freqi,       pcols, lchnk)
-!   call outfld('FREQR',       freqr,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('AQRAIN',      aqrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('ANRAIN',      anrain,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('AREL',        efcout,      pcols, lchnk)
+!   call outfld('AREI',        efiout,      pcols, lchnk) ! AaronDonahue, This seems to lead to NaN in output, need to check this out 
+   call outfld('AWNC' ,       ncout,       pcols, lchnk)
+   call outfld('AWNI' ,       niout,       pcols, lchnk)
+   call outfld('FICE',        nfice,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('FREQL',       freql,       pcols, lchnk)
+   call outfld('FREQI',       freqi,       pcols, lchnk)
+   call outfld('FREQR',       freqr,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+   call outfld('CDNUMC',      cdnumc,      pcols, lchnk)
+
+   call outfld('CLOUDFRAC_LIQ_MICRO', lcldm,      pcols, lchnk)
+   call outfld('CLOUDFRAC_ICE_MICRO', icldm,      pcols, lchnk)
+   call outfld('CLOUDFRAC_RAIN_MICRO', rcldm,      pcols, lchnk)
+
+! P3 doesn't have snow
 !   call outfld('FREQS',       freqs,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('ANSNOW',      nsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+!   call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
     
     !call outfld('P3_QCAUT',   qcaut,  pcols, lchnk)
 
-    !TODO: add other outfld calls. Probably not worth doing until we get the code compiling...
 
   end subroutine micro_p3_tend
 

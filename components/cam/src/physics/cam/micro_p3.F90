@@ -24,7 +24,7 @@
 !__________________________________________________________________________________________!
 !                                                                                          !
 ! Version:       2.8.2.4 + Peter/Aaron's fixes                                             !
-! Last updated:  2018-12-19                                                                !
+! Last updated:  2018-02-04                                                                !
 !__________________________________________________________________________________________!
 ! Comments from Aaron Donahue:                                                             !
 ! 1) Need to change the dz coordinate system in sedimentation to be consistent             !
@@ -48,7 +48,7 @@ MODULE MICRO_P3
        rho_rimeMax,inv_rho_rimeMax,max_total_Ni,dbrk,nmltratio,clbfact_sub,  &
        clbfact_dep,iparam, isize, densize, rimsize, rcollsize, tabsize, colltabsize, &
        get_latent_heat, get_precip_fraction, zerodegc, pi=>pi_e3sm, dnu, &
-       micro_p3_utils_init
+       micro_p3_utils_init, rainfrze, icenuct, homogfrze
    use shr_kind_mod,   only: r8=>shr_kind_r8
 
   implicit none
@@ -113,7 +113,7 @@ contains
 
     !------------------------------------------------------------------------------------------!
 
-    lookup_file_1 = trim(lookup_file_dir)//'/'//'p3_lookup_table_1.dat_v'//trim(version_p3)
+    lookup_file_1 = trim(lookup_file_dir)//'/'//'p3_lookup_table_1.dat-v'//trim(version_p3)
 
     !------------------------------------------------------------------------------------------!
 
@@ -306,7 +306,7 @@ contains
   SUBROUTINE p3_main(qc,nc,qr,nr,th_old,th,qv_old,qv,dt,qitot,qirim,nitot,birim,ssat,   &
        pres,dzq,it,prt_liq,prt_sol,its,ite,kts,kte,diag_ze,diag_effc,     &
        diag_effi,diag_vmi,diag_di,diag_rhoi,log_predictNc, &
-       pdel,exner,ast,cmeiout,prain,nevapr,prer_evap,rflx,sflx)
+       pdel,exner,ast,cmeiout,prain,nevapr,prer_evap,rflx,sflx,rcldm,lcldm,icldm)
 
     !----------------------------------------------------------------------------------------!
     !                                                                                        !
@@ -373,6 +373,7 @@ contains
     ! INPUT needed for PBUF variables used by other parameterizations
     real(r8), intent(in),    dimension(its:ite,kts:kte)      :: ast        ! relative humidity cloud fraction
 
+    real(r8), intent(out),   dimension(its:ite,kts:kte)      :: icldm, lcldm, rcldm ! Ice, Liquid and Rain cloud fraction
     !----- Local variables and parameters:  -------------------------------------------------!
 
     real(r8), dimension(its:ite,kts:kte) :: mu_r  ! shape parameter of rain
@@ -396,13 +397,13 @@ contains
     !  (all Q process rates in kg kg-1 s-1)
     !  (all N process rates in # kg-1)
 
-    real(r8) :: qrcon   ! rain condensation
+    real(r8) :: qrcon   ! rain condensation   (Not in paper?)
     real(r8) :: qcacc   ! cloud droplet accretion by rain
     real(r8) :: qcaut   ! cloud droplet autoconversion to rain
     real(r8) :: ncacc   ! change in cloud droplet number from accretion by rain
     real(r8) :: ncautc  ! change in cloud droplet number from autoconversion
-    real(r8) :: ncslf   ! change in cloud droplet number from self-collection
-    real(r8) :: nrslf   ! change in rain number from self-collection
+    real(r8) :: ncslf   ! change in cloud droplet number from self-collection  (Not in paper?)
+    real(r8) :: nrslf   ! change in rain number from self-collection  (Not in paper?)
     real(r8) :: ncnuc   ! change in cloud droplet number from activation of CCN
     real(r8) :: qccon   ! cloud droplet condensation
     real(r8) :: qcnuc   ! activation of cloud droplets from CCN
@@ -427,7 +428,7 @@ contains
     real(r8) :: qimlt     ! melting of ice
     real(r8) :: nimlt     ! melting of ice
     real(r8) :: nisub     ! change in ice number from sublimation
-    real(r8) :: nislf     ! change in ice number from collection within a category
+    real(r8) :: nislf     ! change in ice number from collection within a category (Not in paper?)
     real(r8) :: qchetc    ! contact freezing droplets
     real(r8) :: qcheti    ! immersion freezing droplets
     real(r8) :: qrhetc    ! contact freezing rain
@@ -451,7 +452,7 @@ contains
 
     real(r8), dimension(its:ite,kts:kte) :: diam_ice
     ! AaronDonahue Added for extra output
-    real(r8), dimension(its:ite,kts:kte) :: icldm, lcldm, rcldm, cldm
+    real(r8), dimension(its:ite,kts:kte) :: cldm
     real(r8)                             :: mincld
     CHARACTER(len=16) :: precip_frac_method = 'max_overlap'
     ! AaronDonahue -end
@@ -738,7 +739,7 @@ contains
                 qv(i,k)   = qv(i,k)-epsilon
                 th(i,k)   = th(i,k)+epsilon*exner(i,k)*xxlv(i,k)*inv_cp
                 ! recalculate variables if there was adjustment
-                t(i,k)    = th(i,k)*(1.e-5*pres(i,k))**(rd*inv_cp)
+                t(i,k)    = th(i,k)*inv_exner(i,k) !*(1.e-5*pres(i,k))**(rd*inv_cp)
                 qvs(i,k)  = qv_sat(t(i,k),pres(i,k),0)
                 qvi(i,k)  = qv_sat(t(i,k),pres(i,k),1)
                 sup(i,k)  = qv(i,k)/qvs(i,k)-1.
@@ -1051,7 +1052,7 @@ contains
           !............................................................
           ! contact and immersion freezing droplets
 
-          if (qc(i,k).ge.qsmall .and. t(i,k).le.269.15) then
+          if (qc(i,k).ge.qsmall .and. t(i,k).le.rainfrze) then
              ! for future: calculate gamma(mu_c+4) in one place since its used multiple times
              dum   = (1./lamc(i,k))**3
              Q_nuc = cons6*cdist1(i,k)*gamma(7.+mu_c(i,k))*exp(aimm*(zerodegc-t(i,k)))*dum**2
@@ -1065,7 +1066,7 @@ contains
           ! immersion freezing of rain
           ! for future: get rid of log statements below for rain freezing
 
-          if (qr(i,k).ge.qsmall.and.t(i,k).le.269.15) then
+          if (qr(i,k).ge.qsmall.and.t(i,k).le.rainfrze) then
              Q_nuc = cons6*exp(log(cdistr(i,k))+log(gamma(7.+mu_r(i,k)))-6.*log(lamr(i,k)))* &
                   exp(aimm*(zerodegc-T(i,k)))
              N_nuc = cons5*exp(log(cdistr(i,k))+log(gamma(mu_r(i,k)+4.))-3.*log(lamr(i,k)))* &
@@ -1224,7 +1225,7 @@ contains
           ! deposition/condensation-freezing nucleation
           ! allow ice nucleation if < -15 C and > 5% ice supersaturation
 
-          if (t(i,k).lt.258.15 .and. supi(i,k).ge.0.05) then
+          if (t(i,k).lt.icenuct .and. supi(i,k).ge.0.05) then
 
              !        dum = exp(-0.639+0.1296*100.*supi(i,k))*1000.*inv_rho(i,k)  !Meyers et al. (1992)
              dum = 0.005*exp(0.304*(zerodegc-t(i,k)))*1000.*inv_rho(i,k)   !Cooper (1986)
@@ -1296,7 +1297,7 @@ contains
           ! to remove any supersaturation in the intial conditions
 
           if (it.eq.1) then
-             dumt   = th(i,k)*(pres(i,k)*1.e-5)**(rd*inv_cp)
+             dumt   = th(i,k)*inv_exner(i,k) !(pres(i,k)*1.e-5)**(rd*inv_cp)
              dumqv  = qv(i,k)
              dumqvs = qv_sat(dumt,pres(i,k),0)
              dums   = dumqv-dumqvs
@@ -1584,6 +1585,11 @@ contains
           th(i,k) = th(i,k) + exner(i,k)*((qcnuc+qccon+qrcon-qcevp-qrevp)*xxlv(i,k)*    &
                inv_cp)*dt
           !==
+          ! AaronDonahue - Add extra variables needed from microphysics by E3SM:
+          cmeiout(i,k) = qidep - qisub + qinuc 
+          prain(i,k)   = ( qcacc + qcaut + qcshd + qccol ) + qrcon 
+          nevapr(i,k)  = qisub + qrevp
+          prer_evap(i,k) = qrevp
 
           ! clipping for small hydrometeor values
           if (qc(i,k).lt.qsmall) then
@@ -2060,7 +2066,7 @@ contains
              diam_ice(i,k) = ((qitot(i,k)*6.)/(dum1*dum2*pi))**thrd
           endif
 
-          if (qc(i,k).ge.qsmall .and. t(i,k).lt.233.15) then
+          if (qc(i,k).ge.qsmall .and. t(i,k).lt.homogfrze) then
              Q_nuc = qc(i,k)
              N_nuc = max(nc(i,k),nsmall)
 
@@ -2073,7 +2079,7 @@ contains
              nc(i,k) = 0.  != nc(i,k) - N_nuc
           endif
 
-          if (qr(i,k).ge.qsmall .and. t(i,k).lt.233.15) then
+          if (qr(i,k).ge.qsmall .and. t(i,k).lt.homogfrze) then
              Q_nuc = qr(i,k)
              N_nuc = max(nr(i,k),nsmall)
 
@@ -2227,7 +2233,7 @@ contains
        if (log_predictSsat) then
           ! recalculate supersaturation from T and qv
           do k = kbot,ktop,kdir
-             t(i,k) = th(i,k)*(1.e-5*pres(i,k))**(rd*inv_cp)
+             t(i,k) = th(i,k)*inv_exner(i,k) !(1.e-5*pres(i,k))**(rd*inv_cp)
              dum    = qv_sat(t(i,k),pres(i,k),0)
              ssat(i,k) = qv(i,k)-dum
           enddo
@@ -2250,17 +2256,6 @@ contains
 
     ! end of main microphysics routine
 
-    ! AaronDonahue - Add extra variables needed from microphysics by E3SM:
-    do i = its,ite
-       do k = kbot,ktop,kdir
-          cmeiout(i,k) = qidep - qisub + qinuc * icldm(i,k)
-          prain(i,k)   = ( qcacc + qcaut + qcshd + qccol ) * lcldm(i,k) &
-                                                   !+ qicol * icldm(i,k) & ! qicol doesn't appear to be created in this version of P3, but this is in Kai's code
-                                                   + qrcon * rcldm(i,k)
-          nevapr(i,k)  = qisub * icldm(i,k) + qrevp * rcldm(i,k)
-          prer_evap(i,k) = qrevp * rcldm(i,k)
-       end do
-    end do
 
     return
 
