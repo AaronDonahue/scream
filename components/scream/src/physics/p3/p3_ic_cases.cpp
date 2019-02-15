@@ -47,8 +47,11 @@ FortranData::Ptr make_mixed () {
   for (k = 0; k < nk; ++k) d.pdel(0,k) = 1e5/double(nk);
   // exner is actually an input variable, but needed here to compute theta.
   for (k = 0; k < nk; ++k) d.exner(0,k) = std::pow((1e5/d.pres(0,k)), (287.15/1005.0));
-  // ast is actually an input variable, but needed here to compute theta.
+  // ast is actually an input variable, but needed here to compute cloud fraction.
   for (k = 0; k < nk; ++k) d.ast(0,k) = 1.0;
+  // npccn and naai are actually an input variable, but needed here to compute aerosol interaction.
+  for (k = 0; k < nk; ++k) d.npccn(0,k) = 1.0;
+  for (k = 0; k < nk; ++k) d.naai(0,k) = 100.0;
 
   // To get potential temperature, start by making absolute temperature vary
   // between 150K at top of atmos and 300k at surface, then convert to potential
