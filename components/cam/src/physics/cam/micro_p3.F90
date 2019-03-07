@@ -1274,16 +1274,6 @@ contains
           ! note that this is also applied at the first time step
           ! this is not applied at the first time step, since saturation adjustment is applied at the first step
 
-          if (.not.(log_predictNc).and.sup(i,k).gt.1.e-6.and.it.gt.1) then
-             dum   = nccnst*inv_rho(i,k)*cons7-qc(i,k)
-             dum   = max(0.,dum)
-             dumqvs = qv_sat(t(i,k),pres(i,k),0)
-             dqsdt = xxlv(i,k)*dumqvs/(rv*t(i,k)*t(i,k))
-             ab    = 1. + dqsdt*xxlv(i,k)*inv_cp
-             dum   = min(dum,(qv(i,k)-dumqvs)/ab)  ! limit overdepletion of supersaturation
-             qcnuc = dum*odt
-          endif
-
           if (log_predictNc) then
 
              ! for predicted Nc, calculate activation explicitly from supersaturation
@@ -1317,7 +1307,16 @@ contains
                 endif
              endif
 
+          else if (sup(i,k).gt.1.e-6.and.it.gt.1) then
+             dum   = nccnst*inv_rho(i,k)*cons7-qc(i,k)
+             dum   = max(0.,dum)
+             dumqvs = qv_sat(t(i,k),pres(i,k),0)
+             dqsdt = xxlv(i,k)*dumqvs/(rv*t(i,k)*t(i,k))
+             ab    = 1. + dqsdt*xxlv(i,k)*inv_cp
+             dum   = min(dum,(qv(i,k)-dumqvs)/ab)  ! limit overdepletion of supersaturation
+             qcnuc = dum*odt
           endif
+
 
           !................................................................
           ! saturation adjustment to get initial cloud water
