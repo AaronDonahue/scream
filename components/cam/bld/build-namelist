@@ -3472,7 +3472,11 @@ else {
 }
 
 # P3
-add_default($nl, 'p3_lookup_dir');
+add_default($nl, 'micro_p3_lookup_dir');
+add_default($nl, 'micro_p3_tableversion');
+add_default($nl, 'micro_aerosolactivation');
+add_default($nl, 'micro_subgrid_cloud');
+add_default($nl, 'micro_tend_output');
 
 
 # CLUBB_SGS
