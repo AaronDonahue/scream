@@ -631,17 +631,21 @@ contains
           qvs(i,k)     = qv_sat(t_old(i,k),pres(i,k),0)
           qvi(i,k)     = qv_sat(t_old(i,k),pres(i,k),1)
 
-          ! if supersaturation is not predicted or during the first time step, then diagnose from qv and T (qvs)
-          if (.not.(log_predictSsat).or.it.eq.1) then
-             ssat(i,k)    = qv_old(i,k)-qvs(i,k)
-             sup(i,k)     = qv_old(i,k)/qvs(i,k)-1.
-             supi(i,k)    = qv_old(i,k)/qvi(i,k)-1.
-             ! if supersaturation is predicted then diagnose sup and supi from ssat
-          else if ((log_predictSsat).and.it.gt.1) then
-             sup(i,k)     = ssat(i,k)/qvs(i,k)
-             supi(i,k)    = (ssat(i,k)+qvs(i,k)-qvi(i,k))/qvi(i,k)
-          endif
-
+!+++PMC remove ssat          
+!!$          ! if supersaturation is not predicted or during the first time step, then diagnose from qv and T (qvs)
+!!$          if (.not.(log_predictSsat).or.it.eq.1) then
+!!$             ssat(i,k)    = qv_old(i,k)-qvs(i,k)
+!!$             sup(i,k)     = qv_old(i,k)/qvs(i,k)-1.
+!!$             supi(i,k)    = qv_old(i,k)/qvi(i,k)-1.
+!!$             ! if supersaturation is predicted then diagnose sup and supi from ssat
+!!$          else if ((log_predictSsat).and.it.gt.1) then
+!!$             sup(i,k)     = ssat(i,k)/qvs(i,k)
+!!$             supi(i,k)    = (ssat(i,k)+qvs(i,k)-qvi(i,k))/qvi(i,k)
+!!$          endif
+          sup(i,k)     = qv(i,k)/qvs(i,k)-1.
+          supi(i,k)    = qv (i,k)/qvi(i,k)-1.
+!---PMC
+          
           rhofacr(i,k) = (rhosur*inv_rho(i,k))**0.54
           rhofaci(i,k) = (rhosui*inv_rho(i,k))**0.54
           dum          = 1.496e-6*t(i,k)**1.5/(t(i,k)+120.)  ! this is mu
@@ -762,41 +766,43 @@ contains
 
           log_wetgrowth = .false.
 
-          !----------------------------------------------------------------------
-          predict_supersaturation: if (log_predictSsat) then
-
-             ! Adjust cloud water and thermodynamics to prognostic supersaturation
-             ! following the method in Grabowski and Morrison (2008).
-             ! Note that the effects of vertical motion are assumed to dominate the
-             ! production term for supersaturation, and the effects are sub-grid
-             ! scale mixing and radiation are not explicitly included.
-
-             dqsdt   = xxlv(i,k)*qvs(i,k)/(rv*t(i,k)*t(i,k))
-             ab      = 1. + dqsdt*xxlv(i,k)*inv_cp
-             epsilon = (qv(i,k)-qvs(i,k)-ssat(i,k))/ab
-             epsilon = max(epsilon,-qc(i,k))   ! limit adjustment to available water
-             ! don't adjust upward if subsaturated
-             ! otherwise this could result in positive adjustment
-             ! (spurious generation ofcloud water) in subsaturated conditions
-             if (ssat(i,k).lt.0.) epsilon = min(0.,epsilon)
-
-             ! now do the adjustment
-             if (abs(epsilon).ge.1.e-15) then
-                qc(i,k)   = qc(i,k)+epsilon
-                qc_incld(i,k)   = qc(i,k)*inv_lcldm(i,k)
-                qv(i,k)   = qv(i,k)-epsilon
-                th(i,k)   = th(i,k)+epsilon*exner(i,k)*xxlv(i,k)*inv_cp
-                ! recalculate variables if there was adjustment
-                t(i,k)    = th(i,k)*inv_exner(i,k) !*(1.e-5*pres(i,k))**(rd*inv_cp)
-                qvs(i,k)  = qv_sat(t(i,k),pres(i,k),0)
-                qvi(i,k)  = qv_sat(t(i,k),pres(i,k),1)
-                sup(i,k)  = qv(i,k)/qvs(i,k)-1.
-                supi(i,k) = qv(i,k)/qvi(i,k)-1.
-                ssat(i,k) = qv(i,k)-qvs(i,k)
-             endif
-
-          endif predict_supersaturation
-          !----------------------------------------------------------------------
+!+++PMC remove ssat
+!!$          !----------------------------------------------------------------------
+!!$          predict_supersaturation: if (log_predictSsat) then
+!!$
+!!$             ! Adjust cloud water and thermodynamics to prognostic supersaturation
+!!$             ! following the method in Grabowski and Morrison (2008).
+!!$             ! Note that the effects of vertical motion are assumed to dominate the
+!!$             ! production term for supersaturation, and the effects are sub-grid
+!!$             ! scale mixing and radiation are not explicitly included.
+!!$
+!!$             dqsdt   = xxlv(i,k)*qvs(i,k)/(rv*t(i,k)*t(i,k))
+!!$             ab      = 1. + dqsdt*xxlv(i,k)*inv_cp
+!!$             epsilon = (qv(i,k)-qvs(i,k)-ssat(i,k))/ab
+!!$             epsilon = max(epsilon,-qc(i,k))   ! limit adjustment to available water
+!!$             ! don't adjust upward if subsaturated
+!!$             ! otherwise this could result in positive adjustment
+!!$             ! (spurious generation ofcloud water) in subsaturated conditions
+!!$             if (ssat(i,k).lt.0.) epsilon = min(0.,epsilon)
+!!$
+!!$             ! now do the adjustment
+!!$             if (abs(epsilon).ge.1.e-15) then
+!!$                qc(i,k)   = qc(i,k)+epsilon
+!!$                qc_incld(i,k)   = qc(i,k)*inv_lcldm(i,k)
+!!$                qv(i,k)   = qv(i,k)-epsilon
+!!$                th(i,k)   = th(i,k)+epsilon*exner(i,k)*xxlv(i,k)*inv_cp
+!!$                ! recalculate variables if there was adjustment
+!!$                t(i,k)    = th(i,k)*inv_exner(i,k) !*(1.e-5*pres(i,k))**(rd*inv_cp)
+!!$                qvs(i,k)  = qv_sat(t(i,k),pres(i,k),0)
+!!$                qvi(i,k)  = qv_sat(t(i,k),pres(i,k),1)
+!!$                sup(i,k)  = qv(i,k)/qvs(i,k)-1.
+!!$                supi(i,k) = qv(i,k)/qvi(i,k)-1.
+!!$                ssat(i,k) = qv(i,k)-qvs(i,k)
+!!$             endif
+!!$
+!!$          endif predict_supersaturation
+!!$          !----------------------------------------------------------------------
+!---PMC 
 
           ! skip micro process calculations except nucleation/acvtivation if there no hydrometeors are present
           log_exitlevel = .true.
@@ -831,6 +837,7 @@ contains
                cdistr(i,k),logn0r(i,k),rcldm(i,k))
           nr(i,k) = nr_incld(i,k)*rcldm(i,k)
 
+          !+++PMC remove ssat note: may be able to remove epsi_tot, but not doing so yet.
           ! initialize inverse supersaturation relaxation timescale for combined ice categories
           epsi_tot = 0.
 
@@ -1133,149 +1140,370 @@ contains
           !that Hallet-Mossop should be neglected if 1 category to compensate for
           !artificial smearing out of ice DSD
 
-          !................................................
-          ! condensation/evaporation/deposition/sublimation
-          !   (use semi-analytic formulation)
+!+++PMC remove ssat          
+!!$          !................................................
+!!$          ! condensation/evaporation/deposition/sublimation
+!!$          !   (use semi-analytic formulation)
+!!$
+!!$          ! calculate rain evaporation including ventilation
+!!$          if (qr_incld(i,k).ge.qsmall) then
+!!$             call find_lookupTable_indices_3(dumii,dumjj,dum1,rdumii,rdumjj,inv_dum3,mu_r(i,k),lamr(i,k))
+!!$             !interpolate value at mu_r
+!!$! bug fix 12/23/18
+!!$!             dum1 = revap_table(dumii,dumjj)+(rdumii-real(dumii))*inv_dum3*                  &
+!!$!                    (revap_table(dumii+1,dumjj)-revap_table(dumii,dumjj))
+!!$
+!!$             dum1 = revap_table(dumii,dumjj)+(rdumii-real(dumii))*                            &
+!!$                    (revap_table(dumii+1,dumjj)-revap_table(dumii,dumjj))
+!!$
+!!$             !interoplate value at mu_r+1
+!!$! bug fix 12/23/18
+!!$!             dum2 = revap_table(dumii,dumjj+1)+(rdumii-real(dumii))*inv_dum3*                &
+!!$!                  (revap_table(dumii+1,dumjj+1)-revap_table(dumii,dumjj+1))
+!!$             dum2 = revap_table(dumii,dumjj+1)+(rdumii-real(dumii))*                          &
+!!$                    (revap_table(dumii+1,dumjj+1)-revap_table(dumii,dumjj+1))    
+!!$             !final interpolation
+!!$             dum  = dum1+(rdumjj-real(dumjj))*(dum2-dum1)
+!!$
+!!$             epsr = 2.*pi*cdistr(i,k)*rho(i,k)*dv*(f1r*gamma(mu_r(i,k)+2.)/(lamr(i,k))+f2r*   &
+!!$                  (rho(i,k)/mu)**0.5*sc**thrd*dum)
+!!$          else
+!!$             epsr = 0.
+!!$          endif
+!!$
+!!$          if (qc_incld(i,k).ge.qsmall) then
+!!$             epsc = 2.*pi*rho(i,k)*dv*cdist(i,k)
+!!$          else
+!!$             epsc = 0.
+!!$          endif
+!!$          !===
+!!$
+!!$          !PMC moved oabi outside t<273.15 loop. oabi is only *used* where t<273.15, but
+!!$          !t could be updated before oabi is used, resulting in unititialized use. Note
+!!$          !that t is not currently being updated before oabi is used, so this is just future-proofing.
+!!$          oabi = 1./abi
+!!$          
+!!$          if (t(i,k).lt.zerodegc) then
+!!$             xx   = epsc + epsr + epsi_tot*(1.+xxls(i,k)*inv_cp*dqsdt)*oabi
+!!$          else
+!!$             xx   = epsc + epsr
+!!$          endif
+!!$
+!!$          dumqvi = qvi(i,k)   !no modification due to latent heating
+!!$          !----
+!!$          ! !      ! modify due to latent heating from riming rate
+!!$          ! !      !   - currently this is done by simple linear interpolation
+!!$          ! !      !     between conditions for dry and wet growth --> in wet growth it is assumed
+!!$          ! !      !     that particle surface temperature is at 0 C and saturation vapor pressure
+!!$          ! !      !     is that with respect to liquid. This simple treatment could be improved in the future.
+!!$          ! !        if (qwgrth.ge.1.e-20) then
+!!$          ! !           dum = (qccol+qrcol)/qwgrth
+!!$          ! !        else
+!!$          ! !           dum = 0.
+!!$          ! !        endif
+!!$          ! !        dumqvi = qvi(i,k) + dum*(qvs(i,k)-qvi(i,k))
+!!$          ! !        dumqvi = min(qvs(i,k),dumqvi)
+!!$          !====
+!!$
+!!$
+!!$          ! 'A' term including ice (Bergeron process)
+!!$          ! note: qv and T tendencies due to mixing and radiation are
+!!$          ! currently neglected --> assumed to be much smaller than cooling
+!!$          ! due to vertical motion which IS included
+!!$
+!!$          ! The equivalent vertical velocity is set to be consistent with dT/dt
+!!$          ! since -g/cp*dum = dT/dt therefore dum = -cp/g*dT/dt
+!!$          ! note this formulation for dT/dt is not exact since pressure
+!!$          ! may change and t and t_old were both diagnosed using the current pressure
+!!$          ! errors from this assumption are small
+!!$          dum = -cp/g*(t(i,k)-t_old(i,k))*odt
+!!$
+!!$          if (t(i,k).lt.zerodegc) then
+!!$             aaa = (qv(i,k)-qv_old(i,k))*odt - dqsdt*(-dum*g*inv_cp)-(qvs(i,k)-dumqvi)*     &
+!!$                  (1.+xxls(i,k)*inv_cp*dqsdt)*oabi*epsi_tot
+!!$          else
+!!$             aaa = (qv(i,k)-qv_old(i,k))*odt - dqsdt*(-dum*g*inv_cp)
+!!$          endif
+!!$
+!!$          xx  = max(1.e-20,xx)   ! set lower bound on xx to prevent division by zero
+!!$          oxx = 1./xx
+!!$
+!!$          if (qc_incld(i,k).ge.qsmall) &
+!!$               qccon = (aaa*epsc*oxx+(ssat(i,k)-aaa*oxx)*odt*epsc*oxx*(1.-dexp(-dble(xx*dt))))/ab
+!!$          if (qr_incld(i,k).ge.qsmall) &
+!!$               qrcon = (aaa*epsr*oxx+(ssat(i,k)-aaa*oxx)*odt*epsr*oxx*(1.-dexp(-dble(xx*dt))))/ab
+!!$
+!!$          !for very small water contents, evaporate instantly
+!!$          if (sup(i,k).lt.-0.001 .and. qc_incld(i,k).lt.1.e-12)  qccon = -qc_incld(i,k)*odt
+!!$          if (sup(i,k).lt.-0.001 .and. qr_incld(i,k).lt.1.e-12)  qrcon = -qr_incld(i,k)*odt
+!!$
+!!$          if (qccon.lt.0.) then
+!!$             qcevp = -qccon
+!!$             qccon = 0.
+!!$          endif
+!!$
+!!$          if (qrcon.lt.0.) then
+!!$             qrevp = -qrcon
+!!$             nrevp = qrevp*(nr_incld(i,k)/qr_incld(i,k))
+!!$             !nrevp = nrevp*exp(-0.2*mu_r(i,k))  !add mu dependence [Seifert (2008), neglecting size dependence]
+!!$             qrcon = 0.
+!!$          endif
+!!$
+!!$          !limit total condensation/evaporation to saturation adjustment
+!!$          dumqvs = qv_sat(t(i,k),pres(i,k),0)
+!!$          qcon_satadj  = (qv(i,k)-dumqvs)/(1.+xxlv(i,k)**2*dumqvs/(cp*rv*t(i,k)**2))*odt
+!!$          if (qccon+qrcon.gt.0.) then
+!!$             ratio = max(0.,qcon_satadj)/(qccon+qrcon)
+!!$             ratio = min(1.,ratio)
+!!$             qccon = qccon*ratio
+!!$             qrcon = qrcon*ratio
+!!$          elseif (qcevp+qrevp.gt.0.) then
+!!$             ratio = max(0.,-qcon_satadj)/(qcevp+qrevp)
+!!$             ratio = min(1.,ratio)
+!!$             qcevp = qcevp*ratio
+!!$             qrevp = qrevp*ratio
+!!$          endif
+!!$
+!!$          if (qitot_incld(i,k).ge.qsmall.and.t(i,k).lt.zerodegc) then
+!!$             qidep = (aaa*epsi*oxx+(ssat(i,k)-aaa*oxx)*odt*epsi*oxx*   &
+!!$                  (1.-dexp(-dble(xx*dt))))*oabi+(qvs(i,k)-dumqvi)*epsi*oabi
+!!$          endif
+!!$
+!!$          !for very small ice contents in dry air, sublimate all ice instantly
+!!$          if (supi(i,k).lt.-0.001 .and. qitot_incld(i,k).lt.1.e-12) &
+!!$               qidep = -qitot_incld(i,k)*odt
+!!$
+!!$          if (qidep.lt.0.) then
+!!$             !note: limit to saturation adjustment (for dep and subl) is applied later
+!!$             qisub = -qidep
+!!$             qisub = qisub*clbfact_sub
+!!$             qisub = min(qisub, qitot_incld(i,k)*dt)
+!!$             nisub = qisub*(nitot_incld(i,k)/qitot_incld(i,k))
+!!$             qidep = 0.
+!!$          else
+!!$             qidep = qidep*clbfact_dep
+!!$          endif
 
-          ! calculate rain evaporation including ventilation
-          if (qr_incld(i,k).ge.qsmall) then
-             call find_lookupTable_indices_3(dumii,dumjj,dum1,rdumii,rdumjj,inv_dum3,mu_r(i,k),lamr(i,k))
-             !interpolate value at mu_r
-! bug fix 12/23/18
-!             dum1 = revap_table(dumii,dumjj)+(rdumii-real(dumii))*inv_dum3*                  &
-!                    (revap_table(dumii+1,dumjj)-revap_table(dumii,dumjj))
+          ! RAIN EVAPORATION AND SNOW SUBLIMATION FROM MG2
+          !................................................................
+          !PMC just copied function call in here, so variable names will be MG, not P3.
+          call evaporate_sublimate_precip(t(:,k), rho(:,k), &
+               dv(:,k), mu(:,k), sc(:,k), q(:,k), qvl(:,k), qvi(:,k), &
+               lcldm(:,k), precip_frac(:,k), arn(:,k), asn(:,k), qcic(:,k), qiic(:,k), &
+               qric(:,k), qsic(:,k), lamr(:,k), n0r(:,k), lams(:,k), n0s(:,k), &
+               pre(:,k), prds(:,k))
 
-             dum1 = revap_table(dumii,dumjj)+(rdumii-real(dumii))*                            &
-                    (revap_table(dumii+1,dumjj)-revap_table(dumii,dumjj))
-
-             !interoplate value at mu_r+1
-! bug fix 12/23/18
-!             dum2 = revap_table(dumii,dumjj+1)+(rdumii-real(dumii))*inv_dum3*                &
-!                  (revap_table(dumii+1,dumjj+1)-revap_table(dumii,dumjj+1))
-             dum2 = revap_table(dumii,dumjj+1)+(rdumii-real(dumii))*                          &
-                    (revap_table(dumii+1,dumjj+1)-revap_table(dumii,dumjj+1))    
-             !final interpolation
-             dum  = dum1+(rdumjj-real(dumjj))*(dum2-dum1)
-
-             epsr = 2.*pi*cdistr(i,k)*rho(i,k)*dv*(f1r*gamma(mu_r(i,k)+2.)/(lamr(i,k))+f2r*   &
-                  (rho(i,k)/mu)**0.5*sc**thrd*dum)
-          else
-             epsr = 0.
-          endif
-
-          if (qc_incld(i,k).ge.qsmall) then
-             epsc = 2.*pi*rho(i,k)*dv*cdist(i,k)
-          else
-             epsc = 0.
-          endif
-          !===
-
-          !PMC moved oabi outside t<273.15 loop. oabi is only *used* where t<273.15, but
-          !t could be updated before oabi is used, resulting in unititialized use. Note
-          !that t is not currently being updated before oabi is used, so this is just future-proofing.
-          oabi = 1./abi
+NOTE: copying function below so we can contemplate it. Needs to be moved to p3_utils file.
           
-          if (t(i,k).lt.zerodegc) then
-             xx   = epsc + epsr + epsi_tot*(1.+xxls(i,k)*inv_cp*dqsdt)*oabi
-          else
-             xx   = epsc + epsr
-          endif
+! calculate evaporation/sublimation of rain and snow
+!===================================================================
+! note: evaporation/sublimation occurs only in cloud-free portion of grid cell
+! in-cloud condensation/deposition of rain and snow is neglected
+! except for transfer of cloud water to snow through bergeron process
 
-          dumqvi = qvi(i,k)   !no modification due to latent heating
-          !----
-          ! !      ! modify due to latent heating from riming rate
-          ! !      !   - currently this is done by simple linear interpolation
-          ! !      !     between conditions for dry and wet growth --> in wet growth it is assumed
-          ! !      !     that particle surface temperature is at 0 C and saturation vapor pressure
-          ! !      !     is that with respect to liquid. This simple treatment could be improved in the future.
-          ! !        if (qwgrth.ge.1.e-20) then
-          ! !           dum = (qccol+qrcol)/qwgrth
-          ! !        else
-          ! !           dum = 0.
-          ! !        endif
-          ! !        dumqvi = qvi(i,k) + dum*(qvs(i,k)-qvi(i,k))
-          ! !        dumqvi = min(qvs(i,k),dumqvi)
-          !====
+elemental subroutine evaporate_sublimate_precip(t, rho, dv, mu, sc, q, qvl, qvi, &
+     lcldm, precip_frac, arn, asn, qcic, qiic, qric, qsic, lamr, n0r, lams, n0s, &
+     pre, prds)
+
+  real(r8), intent(in) :: t    ! temperature
+  real(r8), intent(in) :: rho  ! air density
+  real(r8), intent(in) :: dv   ! water vapor diffusivity
+  real(r8), intent(in) :: mu   ! viscosity
+  real(r8), intent(in) :: sc   ! schmidt number
+  real(r8), intent(in) :: q    ! humidity
+  real(r8), intent(in) :: qvl  ! saturation humidity (water)
+  real(r8), intent(in) :: qvi  ! saturation humidity (ice)
+  real(r8), intent(in) :: lcldm  ! liquid cloud fraction
+  real(r8), intent(in) :: precip_frac ! precipitation fraction (maximum overlap)
+
+  ! fallspeed parameters
+  real(r8), intent(in) :: arn  ! rain
+  real(r8), intent(in) :: asn  ! snow
+
+  ! In-cloud MMRs
+  real(r8), intent(in) :: qcic ! cloud liquid
+  real(r8), intent(in) :: qiic ! cloud ice
+  real(r8), intent(in) :: qric ! rain
+  real(r8), intent(in) :: qsic ! snow
+
+  ! Size parameters
+  ! rain
+  real(r8), intent(in) :: lamr
+  real(r8), intent(in) :: n0r
+  ! snow
+  real(r8), intent(in) :: lams
+  real(r8), intent(in) :: n0s
+
+  ! Output tendencies
+  real(r8), intent(out) :: pre
+  real(r8), intent(out) :: prds
+
+  real(r8) :: qclr   ! water vapor mixing ratio in clear air
+  real(r8) :: ab     ! correction to account for latent heat
+  real(r8) :: eps    ! 1/ sat relaxation timescale
+
+  real(r8) :: dum
+
+  ! set temporary cloud fraction to zero if cloud water + ice is very small
+  ! this will ensure that evaporation/sublimation of precip occurs over
+  ! entire grid cell, since min cloud fraction is specified otherwise
+  if (qcic+qiic < 1.e-6_r8) then
+     dum = 0._r8
+  else
+     dum = lcldm
+  end if
+
+  ! only calculate if there is some precip fraction > cloud fraction
+
+  if (precip_frac > dum) then
+
+     ! calculate q for out-of-cloud region
+     qclr=(q-dum*qvl)/(1._r8-dum)
+
+     ! evaporation of rain
+     if (qric >= qsmall) then
+
+        ab = calc_ab(t, qvl, xxlv)
+        eps = 2._r8*pi*n0r*rho*Dv* &
+             (f1r/(lamr*lamr)+ &
+             f2r*(arn*rho/mu)**0.5_r8* &
+             sc**(1._r8/3._r8)*gamma_half_br_plus5/ &
+             (lamr**(5._r8/2._r8+br/2._r8)))
+
+        pre = eps*(qclr-qvl)/ab
+
+        ! only evaporate in out-of-cloud region
+        ! and distribute across precip_frac
+        pre=min(pre*(precip_frac-dum),0._r8)
+        pre=pre/precip_frac
+     else
+        pre = 0._r8
+     end if
+
+     ! sublimation of snow
+     if (qsic >= qsmall) then
+        ab = calc_ab(t, qvi, xxls)
+        eps = 2._r8*pi*n0s*rho*Dv* &
+             (f1s/(lams*lams)+ &
+             f2s*(asn*rho/mu)**0.5_r8* &
+             sc**(1._r8/3._r8)*gamma_half_bs_plus5/ &
+             (lams**(5._r8/2._r8+bs/2._r8)))
+        prds = eps*(qclr-qvi)/ab
+
+        ! only sublimate in out-of-cloud region and distribute over precip_frac
+        prds=min(prds*(precip_frac-dum),0._r8)
+        prds=prds/precip_frac
+     else
+        prds = 0._r8
+     end if
+
+  else
+     prds = 0._r8
+     pre = 0._r8
+  end if
+
+end subroutine evaporate_sublimate_precip
 
 
-          ! 'A' term including ice (Bergeron process)
-          ! note: qv and T tendencies due to mixing and radiation are
-          ! currently neglected --> assumed to be much smaller than cooling
-          ! due to vertical motion which IS included
+          
+          
+          ! DEPOSITION OF VAPOR ONTO ICE/SUBLIMATION OF VAPOR FROM ICE (FROM MG2)
+          !................................................................
+          call ice_deposition_sublimation(t(:,k), q(:,k), qi(:,k), ni(:,k), &
+               icldm(:,k), rho(:,k), dv(:,k), qvl(:,k), qvi(:,k), dcst(:,k), dcs_tdep, &
+               berg(:,k), vap_dep(:,k), ice_sublim(:,k))
 
-          ! The equivalent vertical velocity is set to be consistent with dT/dt
-          ! since -g/cp*dum = dT/dt therefore dum = -cp/g*dT/dt
-          ! note this formulation for dT/dt is not exact since pressure
-          ! may change and t and t_old were both diagnosed using the current pressure
-          ! errors from this assumption are small
-          dum = -cp/g*(t(i,k)-t_old(i,k))*odt
+!PMC - I just copied ice_deposition_sublimation from micro_mg_utils.F90. We should put it
+!in our p3 utils file or inline the computations here.
+          
+elemental subroutine ice_deposition_sublimation(t, qv, qi, ni, &
+                                                icldm, rho, dv,qvl, qvi,  &
+                                                berg, vap_dep, ice_sublim)
+  
+  ! This routine calculates vapor deposition/ice sublimation rates and
+  ! the Bergeron rate for cloud water. Note that Bergeron occurs where there's 
+  ! cloud and vapor deposition occurs where there isn't... both processes can't
+  ! occur at the same time. This function calculates rates assuming there's never
+  ! cloud for vapor deposition and always cloud for Bergeron. The fraction of the
+  ! timestep before cloud disappears is calculated in the 'conservation checks'
+  ! section and used to decide how much Bergeron vs vapor deposition should occur.
+  ! Originally written by Peter Caldwell in 2012.
 
-          if (t(i,k).lt.zerodegc) then
-             aaa = (qv(i,k)-qv_old(i,k))*odt - dqsdt*(-dum*g*inv_cp)-(qvs(i,k)-dumqvi)*     &
-                  (1.+xxls(i,k)*inv_cp*dqsdt)*oabi*epsi_tot
-          else
-             aaa = (qv(i,k)-qv_old(i,k))*odt - dqsdt*(-dum*g*inv_cp)
-          endif
+  !INPUT VARS:
+  !===============================================
+  real(r8), intent(in) :: t     !temperature (K)
+  real(r8), intent(in) :: qv    !cell-ave vapor mixing ratio (kg/kg)
+  real(r8), intent(in) :: qi    !cell-ave ice mixing ratio (kg/kg)
+  real(r8), intent(in) :: ni    !cell-ave ice crystal # (#/kg)
+  real(r8), intent(in) :: icldm !ice cloud fraction (assumed = liq cld frac)
+  real(r8), intent(in) :: rho   !air(?) density
+  real(r8), intent(in) :: dv    !vapor diffusivity in air
+  real(r8), intent(in) :: qvl   !saturation mixing ratio wrt liquid  (kg/kg)
+  real(r8), intent(in) :: qvi   !saturation mixing ratio wrt ice  (kg/kg)
 
-          xx  = max(1.e-20,xx)   ! set lower bound on xx to prevent division by zero
-          oxx = 1./xx
+  !OUTPUT VARS:
+  !===============================================
+  real(r8), intent(out) :: vap_dep !ice deposition (cell-ave value)
+  real(r8), intent(out) :: ice_sublim !ice sublimation (cell-ave value)
+  real(r8), intent(out) :: berg !bergeron tendency (cell-ave value)
 
-          if (qc_incld(i,k).ge.qsmall) &
-               qccon = (aaa*epsc*oxx+(ssat(i,k)-aaa*oxx)*odt*epsc*oxx*(1.-dexp(-dble(xx*dt))))/ab
-          if (qr_incld(i,k).ge.qsmall) &
-               qrcon = (aaa*epsr*oxx+(ssat(i,k)-aaa*oxx)*odt*epsr*oxx*(1.-dexp(-dble(xx*dt))))/ab
+  !INTERNAL VARS:
+  !===============================================
+  real(r8) :: ab      !correction for condensational heating reducing dqs/dT
+  real(r8) :: epsi    !reciprocal of timescale for ice saturation removal due to vapor diffusion
+  real(r8) :: qiic    !in-cloud qi
+  real(r8) :: niic    !in-cloud ni
+  real(r8) :: lami    
+  real(r8) :: n0i
 
-          !for very small water contents, evaporate instantly
-          if (sup(i,k).lt.-0.001 .and. qc_incld(i,k).lt.1.e-12)  qccon = -qc_incld(i,k)*odt
-          if (sup(i,k).lt.-0.001 .and. qr_incld(i,k).lt.1.e-12)  qrcon = -qr_incld(i,k)*odt
+  if (qi>=qsmall) then
 
-          if (qccon.lt.0.) then
-             qcevp = -qccon
-             qccon = 0.
-          endif
+     !GET IN-CLOUD qi, ni
+     !===============================================
+     qiic = qi/icldm
+     niic = ni/icldm
 
-          if (qrcon.lt.0.) then
-             qrevp = -qrcon
-             nrevp = qrevp*(nr_incld(i,k)/qr_incld(i,k))
-             !nrevp = nrevp*exp(-0.2*mu_r(i,k))  !add mu dependence [Seifert (2008), neglecting size dependence]
-             qrcon = 0.
-          endif
+     !Compute linearized condensational heating correction
+     ab=calc_ab(t, qvi, xxls)
 
-          !limit total condensation/evaporation to saturation adjustment
-          dumqvs = qv_sat(t(i,k),pres(i,k),0)
-          qcon_satadj  = (qv(i,k)-dumqvs)/(1.+xxlv(i,k)**2*dumqvs/(cp*rv*t(i,k)**2))*odt
-          if (qccon+qrcon.gt.0.) then
-             ratio = max(0.,qcon_satadj)/(qccon+qrcon)
-             ratio = min(1.,ratio)
-             qccon = qccon*ratio
-             qrcon = qrcon*ratio
-          elseif (qcevp+qrevp.gt.0.) then
-             ratio = max(0.,-qcon_satadj)/(qcevp+qrevp)
-             ratio = min(1.,ratio)
-             qcevp = qcevp*ratio
-             qrevp = qrevp*ratio
-          endif
+     !Get depletion timescale=1/eps
+     epsi = 2._r8*pi*n0i*rho*Dv/(lami*lami)
 
-          if (qitot_incld(i,k).ge.qsmall.and.t(i,k).lt.zerodegc) then
-             qidep = (aaa*epsi*oxx+(ssat(i,k)-aaa*oxx)*odt*epsi*oxx*   &
-                  (1.-dexp(-dble(xx*dt))))*oabi+(qvs(i,k)-dumqvi)*epsi*oabi
-          endif
+     !Compute deposition/sublimation
+     vap_dep = epsi/ab*(qv - qvi)
 
-          !for very small ice contents in dry air, sublimate all ice instantly
-          if (supi(i,k).lt.-0.001 .and. qitot_incld(i,k).lt.1.e-12) &
-               qidep = -qitot_incld(i,k)*odt
+     !Make this a grid-averaged quantity
+     vap_dep=vap_dep*icldm
 
-          if (qidep.lt.0.) then
-             !note: limit to saturation adjustment (for dep and subl) is applied later
-             qisub = -qidep
-             qisub = qisub*clbfact_sub
-             qisub = min(qisub, qitot_incld(i,k)*dt)
-             nisub = qisub*(nitot_incld(i,k)/qitot_incld(i,k))
-             qidep = 0.
-          else
-             qidep = qidep*clbfact_dep
-          endif
+     !Split into deposition or sublimation.
+     if (t < tmelt .and. vap_dep>0._r8) then
+        ice_sublim=0._r8
+     else
+     ! make ice_sublim negative for consistency with other evap/sub processes
+        ice_sublim=min(vap_dep,0._r8)
+        vap_dep=0._r8
+     end if
 
+     !sublimation occurs @ any T. Not so for berg.
+     if (t < tmelt) then
+
+        !Compute bergeron rate assuming cloud for whole step.
+        berg = max(epsi/ab*(qvl - qvi), 0._r8)
+     else !T>frz
+        berg=0._r8
+     end if !T<frz
+
+  else !where qi<qsmall
+     berg=0._r8
+     vap_dep=0._r8
+     ice_sublim=0._r8
+  end if !qi>qsmall
+
+end subroutine ice_deposition_sublimation
+
+          
+!---PMC
+          
 444       continue
 
 
@@ -1567,7 +1795,7 @@ contains
           !          cannot possibly overdeplete qv
 
           ! cloud
-          sinks   = (qcaut+qcacc+qccol+qcevp+qcheti+qcshd)*dt
+          sinks   = (qcaut+qcacc+qccol+qcevp+qcheti+qcshd+berg)*dt  !PMC remove ssat (added berg)
           sources = qc(i,k) + (qccon+qcnuc)*dt
           if (sinks.gt.sources .and. sinks.ge.1.e-20) then
              ratio  = sources/sinks
@@ -1577,8 +1805,19 @@ contains
              qccol  = qccol*ratio
              qcheti = qcheti*ratio
              qcshd  = qcshd*ratio
-          endif
+ !+++PMC remove ssat
+             berg   = berg*ratio
 
+             !PMC 12/3/12: ratio is also frac of step w/ liquid.
+             !thus we apply berg for "ratio" of timestep and vapor
+             !deposition for the remaining frac of the timestep. 
+             vap_dep(i,k) = vap_dep(i,k)*(1._r8-ratio)
+             
+          else
+             vap_dep = 0._r8 !if not limiting Berg, must not have run out of qc. 
+!---PMC
+          endif
+          
           ! rain
           sinks   = (qrevp+qrcol+qrheti)*dt
           sources = qr(i,k) + (qrcon+qcaut+qcacc+qimlt+qcshd)*dt
@@ -2416,14 +2655,16 @@ contains
 
 333    continue
 
-       if (log_predictSsat) then
-          ! recalculate supersaturation from T and qv
-          do k = kbot,ktop,kdir
-             t(i,k) = th(i,k)*inv_exner(i,k) !(1.e-5*pres(i,k))**(rd*inv_cp)
-             dum    = qv_sat(t(i,k),pres(i,k),0)
-             ssat(i,k) = qv(i,k)-dum
-          enddo
-       endif
+!+++PMC remove ssat
+!!$       if (log_predictSsat) then
+!!$          ! recalculate supersaturation from T and qv
+!!$          do k = kbot,ktop,kdir
+!!$             t(i,k) = th(i,k)*inv_exner(i,k) !(1.e-5*pres(i,k))**(rd*inv_cp)
+!!$             dum    = qv_sat(t(i,k),pres(i,k),0)
+!!$             ssat(i,k) = qv(i,k)-dum
+!!$          enddo
+!!$       endif
+!---PMC
 
        if (debug_ON) then
           tmparr1(i,:) = th(i,:)*inv_exner(i,:)!(pres(i,:)*1.e-5)**(rd*inv_cp)
