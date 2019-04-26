@@ -412,7 +412,7 @@ contains
     real(rtype), dimension(its:ite,kts:kte) :: lamr
     real(rtype), dimension(its:ite,kts:kte) :: logn0r
     real(rtype), dimension(its:ite,kts:kte) :: mu_c
-    !real(rtype), dimension(its:ite,kts:kte) :: diag_effr   (currently not used)
+
     real(rtype), dimension(its:ite,kts:kte) :: nu
     real(rtype), dimension(its:ite,kts:kte) :: cdist
     real(rtype), dimension(its:ite,kts:kte) :: cdist1
@@ -564,7 +564,6 @@ contains
     ze_ice    = 1.e-22
     ze_rain   = 1.e-22
     diag_effc = 10.e-6 ! default value
-    !diag_effr = 25.e-6 ! default value
     diag_effi = 25.e-6 ! default value
     diag_vmi  = 0.
     diag_di   = 0.
@@ -2281,20 +2280,6 @@ contains
                   !                        cdistr(i,k),logn0r(i,k))
                   tmp1,tmp2,rcldm(i,k))
 
-             ! hm, turn off soft lambda limiter
-             ! impose size limits for rain with 'soft' lambda limiter
-             ! (adjusts over a set timescale rather than within one timestep)
-             ! dum2 = (qr(i,k)/(pi*rhow*nr(i,k)))**thrd
-             ! if (dum2.gt.dbrk) then
-             !    dum   = qr(i,k)*cons4
-             !   !dum1  = (dum-nr(i,k))/max(60.,dt)  !time scale for adjustment is 60 s
-             !    dum1  = (dum-nr(i,k))*timeScaleFactor
-             !     nr(i,k) = nr(i,k)+dum1*dt
-             ! endif
-
-             !diag_effr(i,k) = 0.5*(mu_r(i,k)+3.)/lamr(i,k)    (currently not used)
-             ! ze_rain(i,k) = n0r(i,k)*720./lamr(i,k)**3/lamr(i,k)**3/lamr(i,k)
-             ! non-exponential rain:
              ze_rain(i,k) = nr(i,k)*(mu_r(i,k)+6.)*(mu_r(i,k)+5.)*(mu_r(i,k)+4.)*           &
                   (mu_r(i,k)+3.)*(mu_r(i,k)+2.)*(mu_r(i,k)+1.)/lamr(i,k)**6
              ze_rain(i,k) = max(ze_rain(i,k),1.e-22)
